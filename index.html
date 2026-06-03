@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+  <title>ระบบบันทึกจุดเสี่ยงในพื้นที่ทำงาน</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  >
+
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div id="app" class="app-shell">
+
+    <!-- =========================
+      LOGIN SECTION
+    ========================== -->
+    <section id="loginSection" class="page-section login-section active">
+      <div class="login-card">
+
+        <img
+          class="company-logo login-logo"
+          src="https://lh5.googleusercontent.com/d/1HicYHV18UaA5y4GFyHJaG9aNI-qjIzIY"
+          alt="Company Logo"
+        />
+
+        <div class="login-header">
+          <div class="system-badge">Workplace Safety</div>
+          <h1>ระบบบันทึกจุดเสี่ยง</h1>
+          <p>เข้าสู่ระบบด้วยรหัสผู้ตรวจจาก Google Sheet</p>
+        </div>
+
+        <form id="loginForm" class="login-form" autocomplete="off">
+          <label class="form-label" for="passInput">รหัสผู้ตรวจ</label>
+
+          <div class="password-box">
+            <input
+              id="passInput"
+              type="password"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              placeholder="กรอกรหัสตัวเลข"
+              autocomplete="off"
+              required
+            />
+            <button id="togglePassBtn" type="button" class="ghost-mini-btn">
+              แสดง
+            </button>
+          </div>
+
+          <button id="loginBtn" type="submit" class="primary-btn full-btn">
+            เข้าสู่ระบบ
+          </button>
+        </form>
+
+        <div class="login-footer">
+          <span id="loginStatusText">ระบบพร้อมตรวจสอบข้อมูล</span>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- =========================
+      MAIN SECTION
+    ========================== -->
+    <section id="mainSection" class="page-section main-section">
+
+      <header class="topbar">
+        <div>
+          <div class="topbar-kicker">Risk Point Inspection</div>
+          <h2>บันทึกจุดเสี่ยงในพื้นที่ทำงาน</h2>
+          <p id="welcomeText">ผู้ตรวจ: -</p>
+        </div>
+
+        <img
+          class="company-logo topbar-logo"
+          src="https://lh5.googleusercontent.com/d/1HicYHV18UaA5y4GFyHJaG9aNI-qjIzIY"
+          alt="Company Logo"
+        />
+      </header>
+
+      <main class="main-content">
+
+        <!-- Action Panel -->
+        <div class="action-panel">
+          <button id="refreshPointsBtn" type="button" class="soft-btn">
+            โหลดจุดเสี่ยงใหม่
+          </button>
+
+          <button id="openSummaryBtn" type="button" class="primary-btn">
+            ดูสรุปตามวันที่
+          </button>
+
+          <button id="logoutBtn" type="button" class="danger-soft-btn">
+            ออกจากระบบ
+          </button>
+        </div>
+
+        <!-- Date Summary Panel -->
+        <div class="summary-panel">
+          <div>
+            <h3>สรุปผลตรวจรายวัน</h3>
+            <p>เลือกวันที่เพื่อดูข้อมูลก่อนหน้า 1 วัน / วันที่เลือก / ถัดไป 1 วัน</p>
+          </div>
+
+          <div class="summary-date-row">
+            <input id="summaryDateInput" type="date" />
+            <button id="showSummaryBtn" type="button" class="primary-btn">
+              แสดงสรุป
+            </button>
+          </div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-panel">
+          <label for="pointSearchInput">ค้นหาจุดเสี่ยง</label>
+          <input
+            id="pointSearchInput"
+            type="search"
+            placeholder="ค้นหาด้วยชื่อจุดเสี่ยง หรือพิกัด"
+          />
+        </div>
+
+        <!-- Stats -->
+        <div class="mini-stats">
+          <div class="mini-stat-card">
+            <span>จุดเสี่ยงทั้งหมด</span>
+            <strong id="totalPointText">0</strong>
+          </div>
+
+          <div class="mini-stat-card">
+            <span>สถานะระบบ</span>
+            <strong id="systemStatusText">พร้อมใช้งาน</strong>
+          </div>
+        </div>
+
+        <!-- Point List -->
+        <div id="pointList" class="point-grid">
+          <!-- app.js render cards here -->
+        </div>
+
+        <div id="emptyPointState" class="empty-state hidden">
+          <div class="empty-icon">📍</div>
+          <h3>ยังไม่พบข้อมูลจุดเสี่ยง</h3>
+          <p>กรุณาตรวจสอบชีท Sheet1 ว่ามีหัวคอลัมน์ Point และ Coordinates แล้วหรือไม่</p>
+        </div>
+
+      </main>
+    </section>
+
+
+    <!-- =========================
+      INSPECTION SECTION
+    ========================== -->
+    <section id="inspectionSection" class="page-section inspection-section">
+
+      <header class="topbar compact-topbar">
+        <div>
+          <div class="topbar-kicker">Inspection Form</div>
+          <h2>บันทึกผลตรวจจุดเสี่ยง</h2>
+          <p id="inspectionInspectorText">ผู้ตรวจ: -</p>
+        </div>
+
+        <img
+          class="company-logo topbar-logo"
+          src="https://lh5.googleusercontent.com/d/1HicYHV18UaA5y4GFyHJaG9aNI-qjIzIY"
+          alt="Company Logo"
+        />
+      </header>
+
+      <main class="main-content">
+
+        <button id="backToMainBtn" type="button" class="soft-btn back-btn">
+          ← กลับไปเลือกรายการจุดเสี่ยง
+        </button>
+
+        <div class="inspection-card">
+
+          <div class="inspection-title-block">
+            <div>
+              <span class="section-tag">จุดที่เลือก</span>
+              <h3 id="selectedPointName">-</h3>
+              <p id="selectedPointCoordinates">พิกัด: -</p>
+            </div>
+          </div>
+
+          <div class="map-box large-map-box">
+            <iframe
+              id="selectedPointMap"
+              title="แผนที่จุดเสี่ยง"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+            ></iframe>
+          </div>
+
+          <form id="inspectionForm" class="inspection-form" autocomplete="off">
+
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="workDateInput">วันที่รอบงาน</label>
+                <input id="workDateInput" type="date" required />
+                <small>ใช้สำหรับงานกะที่อาจตรวจข้ามวัน</small>
+              </div>
+
+              <div class="form-group">
+                <label for="statusSelect">สถานะพื้นที่</label>
+                <select id="statusSelect" required>
+                  <option value="">เลือกสถานะ</option>
+                  <option value="ปกติ">ปกติ</option>
+                  <option value="ผิดปกติ">ผิดปกติ</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="abnormalBox" class="abnormal-box hidden">
+              <div class="form-group">
+                <label for="abnormalDetailInput">รายละเอียดความผิดปกติ</label>
+                <textarea
+                  id="abnormalDetailInput"
+                  rows="3"
+                  placeholder="ระบุรายละเอียด เช่น พบพื้นแตก สายไฟชำรุด น้ำขัง สิ่งกีดขวาง ฯลฯ"
+                ></textarea>
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="riskLevelSelect">ระดับความเสี่ยง</label>
+                  <select id="riskLevelSelect">
+                    <option value="">เลือกระดับความเสี่ยง</option>
+                    <option value="ต่ำ">ต่ำ</option>
+                    <option value="กลาง">กลาง</option>
+                    <option value="สูง">สูง</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="correctiveActionInput">แนวทางแก้ไขเบื้องต้น</label>
+                  <input
+                    id="correctiveActionInput"
+                    type="text"
+                    placeholder="เช่น แจ้งหัวหน้างาน / กั้นพื้นที่ / รอซ่อม"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="photo-section">
+              <div class="photo-title-row">
+                <div>
+                  <h3>ภาพยืนยันพื้นที่ตรวจ</h3>
+                  <p>ระบบกำหนดให้ถ่ายภาพครบ 2 ภาพก่อนบันทึก</p>
+                </div>
+              </div>
+
+              <div class="photo-grid">
+
+                <label class="photo-box" for="photoInput1">
+                  <input
+                    id="photoInput1"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    class="hidden-file"
+                  />
+                  <div id="photoPreview1" class="photo-preview">
+                    <div class="photo-placeholder">
+                      <span>📷</span>
+                      <strong>ภาพที่ 1</strong>
+                      <small>กดเพื่อเปิดกล้อง</small>
+                    </div>
+                  </div>
+                </label>
+
+                <label class="photo-box" for="photoInput2">
+                  <input
+                    id="photoInput2"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    class="hidden-file"
+                  />
+                  <div id="photoPreview2" class="photo-preview">
+                    <div class="photo-placeholder">
+                      <span>📷</span>
+                      <strong>ภาพที่ 2</strong>
+                      <small>กดเพื่อเปิดกล้อง</small>
+                    </div>
+                  </div>
+                </label>
+
+              </div>
+            </div>
+
+            <div class="submit-panel">
+              <button id="resetInspectionBtn" type="button" class="soft-btn">
+                ล้างข้อมูล
+              </button>
+
+              <button id="saveInspectionBtn" type="submit" class="primary-btn">
+                บันทึกผลตรวจ
+              </button>
+            </div>
+
+          </form>
+
+        </div>
+
+      </main>
+    </section>
+
+  </div>
+
+
+  <!-- =========================
+    App Config
+  ========================== -->
+  <script>
+    window.APP_CONFIG = {
+      API_BASE: 'https://riskpoint.somchaibutphon.workers.dev',
+      LOGO_URL: 'https://lh5.googleusercontent.com/d/1HicYHV18UaA5y4GFyHJaG9aNI-qjIzIY',
+      IMAGE_MAX_WIDTH: 1280,
+      IMAGE_QUALITY: 0.8,
+      STORAGE_KEYS: {
+        INSPECTOR: 'riskpoint_inspector',
+        LOGIN_TIME: 'riskpoint_login_time'
+      }
+    };
+  </script>
+
+  <!-- App JS -->
+  <script src="./app.js"></script>
+</body>
+</html>

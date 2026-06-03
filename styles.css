@@ -1878,3 +1878,128 @@ textarea:focus {
     height: 108px !important;
   }
 }
+/************************************************************
+ * FORCE MOBILE POINT CARDS 2 COLUMNS
+ * บังคับพื้นที่เลือกตรวจจุดเสี่ยงในมือถือให้แสดงแถวละ 2 จุด
+ ************************************************************/
+
+@media (max-width: 539px) {
+  .point-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .point-card {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+    padding: 7px !important;
+    border-radius: 14px !important;
+    min-width: 0 !important;
+  }
+
+  .point-card-header {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 5px !important;
+    min-height: 34px !important;
+  }
+
+  .point-index {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+    border-radius: 8px !important;
+    font-size: 10.5px !important;
+  }
+
+  .point-card h3 {
+    font-size: 11.5px !important;
+    line-height: 1.22 !important;
+    margin: 0 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .point-map-box {
+    height: 76px !important;
+    min-height: 76px !important;
+    border-radius: 10px !important;
+  }
+
+  .point-meta {
+    padding: 5px 6px !important;
+    border-radius: 10px !important;
+  }
+
+  .point-meta span {
+    font-size: 9.5px !important;
+  }
+
+  .point-meta strong {
+    font-size: 9.5px !important;
+    line-height: 1.2 !important;
+    word-break: break-word !important;
+  }
+
+  .latest-inspection-box {
+    padding: 5px 6px !important;
+    border-radius: 10px !important;
+    gap: 0 !important;
+  }
+
+  .latest-inspection-box span {
+    font-size: 9px !important;
+  }
+
+  .latest-inspection-box strong {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+
+  .latest-inspection-box small {
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+  }
+
+  .point-card .full-btn {
+    min-height: 34px !important;
+    margin-top: 0 !important;
+    padding: 6px 5px !important;
+    border-radius: 10px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* จอเล็กมากก็ยังคง 2 คอลัมน์ แต่ย่อการ์ดให้พอดี */
+@media (max-width: 360px) {
+  .point-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .point-card {
+    padding: 6px !important;
+  }
+
+  .point-map-box {
+    height: 68px !important;
+  }
+
+  .point-card h3 {
+    font-size: 10.5px !important;
+  }
+
+  .point-meta strong,
+  .latest-inspection-box strong {
+    font-size: 9px !important;
+  }
+
+  .point-card .full-btn {
+    font-size: 10px !important;
+    min-height: 32px !important;
+  }
+}

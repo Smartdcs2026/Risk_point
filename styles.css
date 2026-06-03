@@ -1358,3 +1358,20 @@ textarea:focus {
     display: none !important;
   }
 }
+.summary-thumb {
+  background: #f1f5f9;
+  position: relative;
+}
+
+.summary-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.summary-thumb img[src=""],
+.summary-thumb img:not([src]) {
+  display: none;
+}

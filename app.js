@@ -1,13 +1,21 @@
 /************************************************************
  * app.js
  * ระบบบันทึกจุดเสี่ยงในพื้นที่ทำงาน
+ * เวอร์ชันปรับปรุง:
+ * - กล้องเปิดด้วย getUserMedia
+ * - fallback เป็น input file capture
+ * - ปรับ fetch timeout
+ * - ปรับ Summary / Save / UI ให้เสถียรขึ้น
  ************************************************************/
 
 const API_BASE = window.APP_CONFIG.API_BASE;
 const LOGO_URL = window.APP_CONFIG.LOGO_URL;
 const IMAGE_MAX_WIDTH = window.APP_CONFIG.IMAGE_MAX_WIDTH || 1280;
-const IMAGE_QUALITY = window.APP_CONFIG.IMAGE_QUALITY || 0.8;
-const STORAGE_KEYS = window.APP_CONFIG.STORAGE_KEYS;
+const IMAGE_QUALITY = window.APP_CONFIG.IMAGE_QUALITY || 0.78;
+const STORAGE_KEYS = window.APP_CONFIG.STORAGE_KEYS || {
+  INSPECTOR: 'riskpoint_inspector',
+  LOGIN_TIME: 'riskpoint_login_time'
+};
 
 const STATE = {
   inspector: '',
@@ -18,6 +26,8 @@ const STATE = {
     1: null,
     2: null
   },
+  currentCameraStream: null,
+  currentFacingMode: 'environment',
   summaryData: null,
   activeSummaryDate: ''
 };
@@ -29,6 +39,7 @@ const STATE = {
 document.addEventListener('DOMContentLoaded', initApp);
 
 function initApp() {
+  injectCameraStyles();
   bindEvents();
   setDefaultDates();
   restoreLogin();
@@ -50,14 +61,35 @@ function bindEvents() {
 
   $('#statusSelect')?.addEventListener('change', handleStatusChange);
 
-  $('#photoInput1')?.addEventListener('change', e => handlePhotoChange(e, 1));
-  $('#photoInput2')?.addEventListener('change', e => handlePhotoChange(e, 2));
-
   $('#inspectionForm')?.addEventListener('submit', handleSaveInspection);
   $('#resetInspectionBtn')?.addEventListener('click', resetInspectionForm);
 
   $('#openSummaryBtn')?.addEventListener('click', openSummaryPicker);
   $('#showSummaryBtn')?.addEventListener('click', handleShowSummary);
+
+  bindCameraBoxes();
+
+  $('#photoInput1')?.addEventListener('change', e => handlePhotoFileChange(e, 1));
+  $('#photoInput2')?.addEventListener('change', e => handlePhotoFileChange(e, 2));
+}
+
+function bindCameraBoxes() {
+  const box1 = document.querySelector('label[for="photoInput1"]');
+  const box2 = document.querySelector('label[for="photoInput2"]');
+
+  if (box1) {
+    box1.addEventListener('click', e => {
+      e.preventDefault();
+      openCameraCapture(1);
+    });
+  }
+
+  if (box2) {
+    box2.addEventListener('click', e => {
+      e.preventDefault();
+      openCameraCapture(2);
+    });
+  }
 }
 
 function setDefaultDates() {
@@ -84,28 +116,47 @@ function restoreLogin() {
  * API
  ************************************************************/
 
-async function apiGet(path) {
-  const res = await fetch(`${API_BASE}${path}`, {
+async function apiGet(path, timeoutMs = 45000) {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'GET',
     headers: {
       Accept: 'application/json'
     }
-  });
+  }, timeoutMs);
 
   return parseApiResponse(res);
 }
 
-async function apiPost(path, payload) {
-  const res = await fetch(`${API_BASE}${path}`, {
+async function apiPost(path, payload, timeoutMs = 120000) {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json'
     },
     body: JSON.stringify(payload || {})
-  });
+  }, timeoutMs);
 
   return parseApiResponse(res);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('ระบบใช้เวลานานเกินไป กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function parseApiResponse(res) {
@@ -137,7 +188,7 @@ async function apiHealth() {
 async function handleLogin(e) {
   e.preventDefault();
 
-  const pass = $('#passInput').value.trim();
+  const pass = $('#passInput')?.value.trim();
 
   if (!pass) {
     showWarning('กรุณากรอกรหัสผู้ตรวจ');
@@ -147,7 +198,7 @@ async function handleLogin(e) {
   setButtonLoading('loginBtn', true, 'กำลังตรวจสอบ...');
 
   try {
-    const data = await apiPost('/api/login', { pass });
+    const data = await apiPost('/api/login', { pass }, 45000);
 
     STATE.inspector = data.inspector;
     localStorage.setItem(STORAGE_KEYS.INSPECTOR, data.inspector);
@@ -159,7 +210,7 @@ async function handleLogin(e) {
       icon: 'success',
       title: 'เข้าสู่ระบบสำเร็จ',
       text: `ผู้ตรวจ: ${data.inspector}`,
-      timer: 1200,
+      timer: 1000,
       showConfirmButton: false,
       customClass: getSwalClass()
     });
@@ -177,6 +228,8 @@ async function handleLogin(e) {
 function togglePassword() {
   const input = $('#passInput');
   const btn = $('#togglePassBtn');
+
+  if (!input || !btn) return;
 
   if (input.type === 'password') {
     input.type = 'text';
@@ -206,8 +259,10 @@ function logout() {
     STATE.points = [];
     STATE.filteredPoints = [];
     STATE.selectedPoint = null;
+    STATE.images[1] = null;
+    STATE.images[2] = null;
 
-    $('#passInput').value = '';
+    if ($('#passInput')) $('#passInput').value = '';
     showSection('loginSection');
   });
 }
@@ -241,7 +296,7 @@ async function loadRiskPoints() {
 }
 
 function handleSearchPoint() {
-  const keyword = ($('#pointSearchInput').value || '').trim().toLowerCase();
+  const keyword = ($('#pointSearchInput')?.value || '').trim().toLowerCase();
 
   if (!keyword) {
     STATE.filteredPoints = [...STATE.points];
@@ -261,18 +316,21 @@ function renderPointCards() {
   const box = $('#pointList');
   const empty = $('#emptyPointState');
 
+  if (!box) return;
+
   box.innerHTML = '';
 
   if (!STATE.filteredPoints.length) {
-    empty.classList.remove('hidden');
+    empty?.classList.remove('hidden');
     return;
   }
 
-  empty.classList.add('hidden');
+  empty?.classList.add('hidden');
 
   STATE.filteredPoints.forEach((item, index) => {
     const card = document.createElement('article');
     card.className = 'point-card';
+
     card.innerHTML = `
       <div class="point-card-header">
         <span class="point-index">${index + 1}</span>
@@ -281,7 +339,7 @@ function renderPointCards() {
 
       <div class="map-box point-map-box">
         <iframe
-          title="แผนที่ ${escapeHtml(item.point)}"
+          title="แผนที่ ${escapeAttr(item.point)}"
           src="${escapeAttr(item.mapUrl)}"
           loading="lazy"
           referrerpolicy="no-referrer-when-downgrade">
@@ -313,31 +371,225 @@ function openInspection(point) {
 
   setText('selectedPointName', point.point);
   setText('selectedPointCoordinates', `พิกัด: ${point.coordinates}`);
-  $('#selectedPointMap').src = point.mapUrl || '';
+
+  if ($('#selectedPointMap')) {
+    $('#selectedPointMap').src = point.mapUrl || '';
+  }
 
   showSection('inspectionSection');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 80);
 }
 
 function handleStatusChange() {
-  const status = $('#statusSelect').value;
+  const status = $('#statusSelect')?.value || '';
 
   if (status === 'ผิดปกติ') {
-    $('#abnormalBox').classList.remove('hidden');
-    $('#abnormalDetailInput').setAttribute('required', 'required');
-    $('#riskLevelSelect').setAttribute('required', 'required');
+    $('#abnormalBox')?.classList.remove('hidden');
+    $('#abnormalDetailInput')?.setAttribute('required', 'required');
+    $('#riskLevelSelect')?.setAttribute('required', 'required');
   } else {
-    $('#abnormalBox').classList.add('hidden');
-    $('#abnormalDetailInput').removeAttribute('required');
-    $('#riskLevelSelect').removeAttribute('required');
+    $('#abnormalBox')?.classList.add('hidden');
+    $('#abnormalDetailInput')?.removeAttribute('required');
+    $('#riskLevelSelect')?.removeAttribute('required');
 
-    $('#abnormalDetailInput').value = '';
-    $('#riskLevelSelect').value = '';
-    $('#correctiveActionInput').value = '';
+    if ($('#abnormalDetailInput')) $('#abnormalDetailInput').value = '';
+    if ($('#riskLevelSelect')) $('#riskLevelSelect').value = '';
+    if ($('#correctiveActionInput')) $('#correctiveActionInput').value = '';
   }
 }
 
-async function handlePhotoChange(e, index) {
+/************************************************************
+ * Camera
+ ************************************************************/
+
+async function openCameraCapture(index) {
+  const canUseCamera =
+    window.isSecureContext &&
+    navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getUserMedia === 'function';
+
+  if (!canUseCamera) {
+    openFilePicker(index);
+    return;
+  }
+
+  let localStream = null;
+
+  await Swal.fire({
+    title: '',
+    html: `
+      <div class="camera-modal">
+        <div class="camera-header">
+          <img src="${LOGO_URL}" alt="logo">
+          <div>
+            <h3>ถ่ายภาพที่ ${index}</h3>
+            <p>กรุณาถ่ายภาพพื้นที่จริงของจุดเสี่ยง</p>
+          </div>
+        </div>
+
+        <div class="camera-video-wrap">
+          <video id="riskCameraVideo" autoplay playsinline muted></video>
+          <div id="cameraStatusText" class="camera-status">กำลังเปิดกล้อง...</div>
+        </div>
+
+        <div class="camera-actions">
+          <button type="button" id="captureCameraBtn" class="camera-primary-btn">ถ่ายภาพ</button>
+          <button type="button" id="switchCameraBtn" class="camera-soft-btn">สลับกล้อง</button>
+          <button type="button" id="fileFallbackBtn" class="camera-soft-btn">เลือกจากเครื่อง</button>
+        </div>
+      </div>
+    `,
+    width: '96%',
+    showConfirmButton: false,
+    showCancelButton: true,
+    cancelButtonText: 'ปิด',
+    allowOutsideClick: false,
+    customClass: {
+      popup: 'camera-swal-popup',
+      htmlContainer: 'camera-swal-html',
+      cancelButton: 'custom-swal-cancel'
+    },
+    didOpen: async () => {
+      const video = document.getElementById('riskCameraVideo');
+      const status = document.getElementById('cameraStatusText');
+      const captureBtn = document.getElementById('captureCameraBtn');
+      const switchBtn = document.getElementById('switchCameraBtn');
+      const fileBtn = document.getElementById('fileFallbackBtn');
+
+      const startCamera = async () => {
+        stopCameraStream(localStream);
+
+        try {
+          status.textContent = 'กำลังขอสิทธิ์กล้อง...';
+
+          localStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: STATE.currentFacingMode },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+
+          STATE.currentCameraStream = localStream;
+          video.srcObject = localStream;
+
+          await video.play();
+
+          status.textContent = 'กล้องพร้อมใช้งาน';
+          setTimeout(() => {
+            if (status) status.style.opacity = '0';
+          }, 800);
+
+        } catch (err) {
+          status.style.opacity = '1';
+          status.textContent = 'เปิดกล้องไม่ได้ กรุณาใช้ปุ่มเลือกจากเครื่อง';
+        }
+      };
+
+      await startCamera();
+
+      captureBtn.onclick = async () => {
+        try {
+          const image = await captureVideoFrame(video, index);
+
+          STATE.images[index] = image;
+          renderPhotoPreview(index, image.base64);
+
+          stopCameraStream(localStream);
+          Swal.close();
+
+        } catch (err) {
+          showError('ถ่ายภาพไม่สำเร็จ: ' + err.message);
+        }
+      };
+
+      switchBtn.onclick = async () => {
+        STATE.currentFacingMode =
+          STATE.currentFacingMode === 'environment' ? 'user' : 'environment';
+
+        if (status) {
+          status.style.opacity = '1';
+          status.textContent = 'กำลังสลับกล้อง...';
+        }
+
+        await startCamera();
+      };
+
+      fileBtn.onclick = () => {
+        stopCameraStream(localStream);
+        Swal.close();
+        setTimeout(() => openFilePicker(index), 150);
+      };
+    },
+    willClose: () => {
+      stopCameraStream(localStream);
+      stopCameraStream(STATE.currentCameraStream);
+    }
+  });
+}
+
+function stopCameraStream(stream) {
+  if (!stream) return;
+
+  try {
+    stream.getTracks().forEach(track => track.stop());
+  } catch (err) {
+    // ignore
+  }
+
+  if (STATE.currentCameraStream === stream) {
+    STATE.currentCameraStream = null;
+  }
+}
+
+function captureVideoFrame(video, index) {
+  return new Promise((resolve, reject) => {
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      reject(new Error('กล้องยังไม่พร้อม กรุณารอสักครู่'));
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+
+    if (width > IMAGE_MAX_WIDTH) {
+      height = Math.round((height * IMAGE_MAX_WIDTH) / width);
+      width = IMAGE_MAX_WIDTH;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const base64 = canvas.toDataURL('image/jpeg', IMAGE_QUALITY);
+
+    resolve({
+      name: `camera_photo_${index}.jpg`,
+      mimeType: 'image/jpeg',
+      base64,
+      size: Math.round((base64.length * 3) / 4)
+    });
+  });
+}
+
+function openFilePicker(index) {
+  const input = $(`#photoInput${index}`);
+
+  if (!input) {
+    showWarning(`ไม่พบช่องเลือกรูปภาพที่ ${index}`);
+    return;
+  }
+
+  input.value = '';
+  input.click();
+}
+
+async function handlePhotoFileChange(e, index) {
   const file = e.target.files && e.target.files[0];
 
   if (!file) return;
@@ -371,18 +623,24 @@ async function handlePhotoChange(e, index) {
 function renderPhotoPreview(index, base64) {
   const box = $(`#photoPreview${index}`);
 
+  if (!box) return;
+
   box.innerHTML = `
     <img src="${base64}" alt="ภาพที่ ${index}" />
     <div class="photo-ok-badge">ภาพที่ ${index} พร้อมใช้งาน</div>
   `;
 }
 
+/************************************************************
+ * Save Inspection
+ ************************************************************/
+
 async function handleSaveInspection(e) {
   e.preventDefault();
 
   const payload = buildInspectionPayload();
-
   const validation = validateInspectionPayload(payload);
+
   if (!validation.ok) {
     showWarning(validation.message);
     return;
@@ -395,6 +653,7 @@ async function handleSaveInspection(e) {
         <strong>${escapeHtml(payload.point)}</strong>
         <p>สถานะพื้นที่: ${escapeHtml(payload.status)}</p>
         <p>วันที่รอบงาน: ${escapeHtml(payload.workDate)}</p>
+        <p>ภาพยืนยัน: ครบ 2 ภาพ</p>
       </div>
     `,
     icon: 'question',
@@ -410,7 +669,7 @@ async function handleSaveInspection(e) {
   showLoading('กำลังอัปโหลดภาพและบันทึกข้อมูล...');
 
   try {
-    const data = await apiPost('/api/save', payload);
+    const data = await apiPost('/api/save', payload, 150000);
 
     await Swal.fire({
       icon: 'success',
@@ -429,6 +688,7 @@ async function handleSaveInspection(e) {
 
     resetInspectionForm();
     showSection('mainSection');
+    await loadRiskPoints();
 
   } catch (err) {
     showError(err.message);
@@ -438,17 +698,17 @@ async function handleSaveInspection(e) {
 }
 
 function buildInspectionPayload() {
-  const status = $('#statusSelect').value.trim();
+  const status = $('#statusSelect')?.value.trim() || '';
 
   return {
     inspector: STATE.inspector,
     point: STATE.selectedPoint?.point || '',
     coordinates: STATE.selectedPoint?.coordinates || '',
-    workDate: inputDateToThai($('#workDateInput').value),
+    workDate: inputDateToThai($('#workDateInput')?.value || ''),
     status,
-    abnormalDetail: $('#abnormalDetailInput').value.trim(),
-    riskLevel: $('#riskLevelSelect').value.trim(),
-    correctiveAction: $('#correctiveActionInput').value.trim(),
+    abnormalDetail: $('#abnormalDetailInput')?.value.trim() || '',
+    riskLevel: $('#riskLevelSelect')?.value.trim() || '',
+    correctiveAction: $('#correctiveActionInput')?.value.trim() || '',
     deviceInfo: navigator.userAgent || '',
     images: [
       STATE.images[1],
@@ -561,14 +821,14 @@ function openSummaryPicker() {
     }
   }).then(result => {
     if (result.isConfirmed) {
-      $('#summaryDateInput').value = result.value;
+      if ($('#summaryDateInput')) $('#summaryDateInput').value = result.value;
       loadSummary(result.value);
     }
   });
 }
 
 function handleShowSummary() {
-  const date = $('#summaryDateInput').value;
+  const date = $('#summaryDateInput')?.value || '';
 
   if (!date) {
     showWarning('กรุณาเลือกวันที่');
@@ -583,7 +843,7 @@ async function loadSummary(inputDate) {
 
   try {
     const dateText = inputDate.includes('-') ? inputDate : thaiDateToInput(inputDate);
-    const data = await apiGet(`/api/summary?date=${encodeURIComponent(dateText)}`);
+    const data = await apiGet(`/api/summary?date=${encodeURIComponent(dateText)}`, 60000);
 
     STATE.summaryData = data;
     STATE.activeSummaryDate = data.selectedDate;
@@ -619,16 +879,15 @@ function renderSummaryPopup(data, activeDate) {
     didOpen: () => {
       bindSummaryTabs(data);
     }
-  }).then(result => {
+  }).then(async result => {
     if (result.isDenied) {
-      copySummaryText(day);
-      renderSummaryPopup(data, day.date);
+      await copySummaryText(day);
     }
   });
 }
 
 function buildSummaryHtml(data, day) {
-  const inspectorsText = day.inspectors.length ? day.inspectors.join(', ') : '-';
+  const inspectorsText = day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-';
 
   const tabs = data.days.map(d => {
     const active = d.date === day.date ? 'active' : '';
@@ -640,12 +899,12 @@ function buildSummaryHtml(data, day) {
     `;
   }).join('');
 
-  const itemsHtml = day.items.length
+  const itemsHtml = day.items && day.items.length
     ? day.items.map(buildSummaryItemCard).join('')
     : `
       <div class="summary-empty">
         <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
-        <p>ลองเลือกวันที่ก่อนหน้าหรือถัดไป</p>
+        <p>หากเพิ่งบันทึก กรุณาตรวจสอบวันที่รอบงาน หรือกดวันที่ก่อนหน้า/ถัดไป</p>
       </div>
     `;
 
@@ -690,7 +949,7 @@ function buildSummaryHtml(data, day) {
   `;
 }
 
-function buildSummaryItemCard(item, index) {
+function buildSummaryItemCard(item) {
   const isAbnormal = item.status === 'ผิดปกติ';
 
   const imageHtml = item.image1Url
@@ -722,12 +981,8 @@ function buildSummaryItemCard(item, index) {
       ` : ''}
 
       <div class="summary-media-row">
-        <div class="summary-thumb">
-          ${imageHtml}
-        </div>
-        <div class="summary-map">
-          ${mapHtml}
-        </div>
+        <div class="summary-thumb">${imageHtml}</div>
+        <div class="summary-map">${mapHtml}</div>
       </div>
     </article>
   `;
@@ -738,20 +993,20 @@ function bindSummaryTabs(data) {
     btn.addEventListener('click', () => {
       const date = btn.dataset.date;
       Swal.close();
-      renderSummaryPopup(data, date);
+      setTimeout(() => renderSummaryPopup(data, date), 100);
     });
   });
 }
 
 async function copySummaryText(day) {
-  const abnormalItems = day.items.filter(x => x.status === 'ผิดปกติ');
+  const abnormalItems = (day.items || []).filter(x => x.status === 'ผิดปกติ');
 
   let text = '';
   text += `สรุปผลตรวจจุดเสี่ยง ${day.date}\n`;
   text += `ตรวจทั้งหมด ${day.total} จุด\n`;
   text += `ปกติ ${day.normal} จุด\n`;
   text += `ผิดปกติ ${day.abnormal} จุด\n`;
-  text += `ผู้ตรวจ: ${day.inspectors.length ? day.inspectors.join(', ') : '-'}\n`;
+  text += `ผู้ตรวจ: ${day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-'}\n`;
 
   if (abnormalItems.length) {
     text += `\nรายการผิดปกติ:\n`;
@@ -787,7 +1042,7 @@ async function copySummaryText(day) {
 
 function compressImage(file, options = {}) {
   const maxWidth = options.maxWidth || 1280;
-  const quality = options.quality || 0.8;
+  const quality = options.quality || 0.78;
 
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -930,19 +1185,159 @@ function thaiDateToInput(thaiDate) {
 
 function escapeHtml(value) {
   return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function escapeAttr(value) {
-  return escapeHtml(value).replaceAll('`', '&#096;');
+  return escapeHtml(value).replace(/`/g, '&#096;');
 }
 
 /************************************************************
- * Selectors
+ * Camera CSS Inject
+ ************************************************************/
+
+function injectCameraStyles() {
+  if (document.getElementById('riskCameraStyle')) return;
+
+  const style = document.createElement('style');
+  style.id = 'riskCameraStyle';
+  style.textContent = `
+    .camera-swal-popup {
+      border-radius: 24px !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      background: #f8fafc !important;
+      font-family: "Sarabun", system-ui, sans-serif !important;
+    }
+
+    .camera-swal-html {
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    .camera-modal {
+      padding: 14px;
+      text-align: left;
+    }
+
+    .camera-header {
+      display: grid;
+      grid-template-columns: 52px 1fr;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 12px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #0f3d66, #155a92);
+      color: #fff;
+    }
+
+    .camera-header img {
+      width: 52px;
+      height: 52px;
+      padding: 5px;
+      border-radius: 14px;
+      background: #fff;
+      object-fit: contain;
+    }
+
+    .camera-header h3 {
+      margin: 0;
+      font-family: "Prompt", system-ui, sans-serif;
+      font-size: 20px;
+    }
+
+    .camera-header p {
+      margin: 3px 0 0;
+      font-size: 13px;
+      opacity: 0.92;
+    }
+
+    .camera-video-wrap {
+      position: relative;
+      width: 100%;
+      height: min(62vh, 520px);
+      min-height: 320px;
+      overflow: hidden;
+      border-radius: 22px;
+      background: #020617;
+      border: 1px solid #cbd5e1;
+    }
+
+    #riskCameraVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #020617;
+    }
+
+    .camera-status {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #fff;
+      font-weight: 700;
+      text-align: center;
+      transition: opacity .2s ease;
+    }
+
+    .camera-actions {
+      display: grid;
+      grid-template-columns: 1.2fr .9fr .9fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .camera-primary-btn,
+    .camera-soft-btn {
+      min-height: 46px;
+      border: 0;
+      border-radius: 14px;
+      padding: 10px;
+      font-family: "Prompt", system-ui, sans-serif;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .camera-primary-btn {
+      background: linear-gradient(135deg, #0f3d66, #155a92);
+      color: #fff;
+    }
+
+    .camera-soft-btn {
+      background: #e7f1fb;
+      color: #0f3d66;
+    }
+
+    @media (max-width: 560px) {
+      .camera-video-wrap {
+        height: 58vh;
+        min-height: 280px;
+      }
+
+      .camera-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .camera-header h3 {
+        font-size: 18px;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+/************************************************************
+ * Selector
  ************************************************************/
 
 function $(selector) {

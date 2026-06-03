@@ -1121,10 +1121,20 @@ function buildSummaryItemCard(item) {
   const isAbnormal = item.status === 'ผิดปกติ';
   const mapUrl = buildMapEmbedUrl(item.coordinates, 20);
 
-  const imageHtml = item.image1Url
-    ? `<img src="${escapeAttr(item.image1Url)}" alt="ภาพแรก" loading="lazy">`
-    : `<div class="no-image">ไม่มีภาพ</div>`;
+  const imageUrl = buildSummaryImageUrl(item);
 
+const imageHtml = imageUrl
+  ? `
+    <img
+      src="${escapeAttr(imageUrl)}"
+      alt="ภาพแรก"
+      loading="lazy"
+      referrerpolicy="no-referrer"
+      onerror="this.onerror=null;this.src='${escapeAttr(buildDriveFallbackImageUrl(item.image1FileId))}';"
+    >
+  `
+  : `<div class="no-image">ไม่มีภาพ</div>`;
+  
   const mapHtml = mapUrl
     ? `<iframe src="${escapeAttr(mapUrl)}" loading="lazy"></iframe>`
     : `<div class="no-image">ไม่มีแผนที่</div>`;
@@ -1673,7 +1683,43 @@ function injectDynamicStyles() {
 /************************************************************
  * Selector
  ************************************************************/
+function buildSummaryImageUrl(item) {
+  const fileId = String(item.image1FileId || '').trim();
 
+  if (fileId) {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w900`;
+  }
+
+  const url = String(item.image1Url || '').trim();
+  const extractedId = extractDriveFileIdFromUrl(url);
+
+  if (extractedId) {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(extractedId)}&sz=w900`;
+  }
+
+  return url;
+}
+
+function buildDriveFallbackImageUrl(fileId) {
+  const id = String(fileId || '').trim();
+
+  if (!id) return '';
+
+  return `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=w900`;
+}
+
+function extractDriveFileIdFromUrl(url) {
+  const text = String(url || '').trim();
+  if (!text) return '';
+
+  let match = text.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) return match[1];
+
+  match = text.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (match && match[1]) return match[1];
+
+  return '';
+}
 function $(selector) {
   return document.querySelector(selector);
 }

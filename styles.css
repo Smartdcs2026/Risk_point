@@ -2003,3 +2003,211 @@ textarea:focus {
     min-height: 32px !important;
   }
 }
+
+/************************************************************
+ * FINAL FIX: POINT GRID 2 COLUMNS ON MOBILE
+ * จุดนี้ต้องอยู่ท้ายไฟล์ styles.css เสมอ
+ * แก้ปัญหา .point-grid ถูก media query เดิมบังคับให้เหลือแถวละ 1 จุด
+ ************************************************************/
+
+@media (max-width: 1024px) {
+  #pointList.point-grid,
+  .main-content #pointList.point-grid,
+  body #pointList.point-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  #pointList.point-grid > .point-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 7px !important;
+    padding: 8px !important;
+    border-radius: 15px !important;
+  }
+
+  #pointList .point-card-header {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 5px !important;
+    min-height: 34px !important;
+  }
+
+  #pointList .point-index {
+    width: 23px !important;
+    height: 23px !important;
+    min-width: 23px !important;
+    border-radius: 8px !important;
+    font-size: 10.5px !important;
+  }
+
+  #pointList .point-card h3 {
+    margin: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.22 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+    min-height: 29px !important;
+  }
+
+  #pointList .point-map-box {
+    width: 100% !important;
+    height: 82px !important;
+    min-height: 82px !important;
+    border-radius: 11px !important;
+  }
+
+  #pointList .point-map-box iframe {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  #pointList .point-meta,
+  #pointList .latest-inspection-box {
+    padding: 5px 6px !important;
+    border-radius: 10px !important;
+    min-width: 0 !important;
+  }
+
+  #pointList .point-meta span,
+  #pointList .latest-inspection-box span {
+    font-size: 9px !important;
+    line-height: 1.15 !important;
+  }
+
+  #pointList .point-meta strong,
+  #pointList .latest-inspection-box strong {
+    font-size: 9.8px !important;
+    line-height: 1.18 !important;
+    word-break: break-word !important;
+  }
+
+  #pointList .latest-inspection-box small {
+    font-size: 8.8px !important;
+    line-height: 1.15 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  #pointList .point-card .full-btn {
+    width: 100% !important;
+    min-height: 33px !important;
+    margin-top: auto !important;
+    padding: 6px 5px !important;
+    border-radius: 10px !important;
+    font-size: 10.8px !important;
+    line-height: 1.15 !important;
+  }
+}
+
+@media (max-width: 430px) {
+  #pointList.point-grid,
+  .main-content #pointList.point-grid,
+  body #pointList.point-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  #pointList.point-grid > .point-card {
+    padding: 6px !important;
+    gap: 5px !important;
+    border-radius: 13px !important;
+  }
+
+  #pointList .point-card-header {
+    min-height: 31px !important;
+    gap: 4px !important;
+  }
+
+  #pointList .point-index {
+    width: 21px !important;
+    height: 21px !important;
+    min-width: 21px !important;
+    font-size: 10px !important;
+  }
+
+  #pointList .point-card h3 {
+    font-size: 10.8px !important;
+    line-height: 1.2 !important;
+    min-height: 27px !important;
+  }
+
+  #pointList .point-map-box {
+    height: 70px !important;
+    min-height: 70px !important;
+    border-radius: 10px !important;
+  }
+
+  #pointList .point-meta,
+  #pointList .latest-inspection-box {
+    padding: 4px 5px !important;
+    border-radius: 9px !important;
+  }
+
+  #pointList .point-meta span,
+  #pointList .latest-inspection-box span {
+    font-size: 8.5px !important;
+  }
+
+  #pointList .point-meta strong,
+  #pointList .latest-inspection-box strong {
+    font-size: 9px !important;
+  }
+
+  #pointList .latest-inspection-box small {
+    font-size: 8.2px !important;
+  }
+
+  #pointList .point-card .full-btn {
+    min-height: 31px !important;
+    font-size: 10px !important;
+    border-radius: 9px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  #pointList.point-grid,
+  .main-content #pointList.point-grid,
+  body #pointList.point-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+  }
+
+  #pointList.point-grid > .point-card {
+    padding: 5px !important;
+    gap: 4px !important;
+  }
+
+  #pointList .point-map-box {
+    height: 62px !important;
+    min-height: 62px !important;
+  }
+
+  #pointList .point-card h3 {
+    font-size: 10px !important;
+    min-height: 25px !important;
+  }
+
+  #pointList .point-meta,
+  #pointList .latest-inspection-box {
+    padding: 4px !important;
+  }
+
+  #pointList .point-meta strong,
+  #pointList .latest-inspection-box strong {
+    font-size: 8.5px !important;
+  }
+
+  #pointList .point-card .full-btn {
+    min-height: 29px !important;
+    font-size: 9.5px !important;
+  }
+}

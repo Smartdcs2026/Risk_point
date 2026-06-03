@@ -13,8 +13,8 @@
 
 const API_BASE = window.APP_CONFIG.API_BASE;
 const LOGO_URL = window.APP_CONFIG.LOGO_URL;
-const IMAGE_MAX_WIDTH = window.APP_CONFIG.IMAGE_MAX_WIDTH || 1280;
-const IMAGE_QUALITY = window.APP_CONFIG.IMAGE_QUALITY || 0.78;
+const IMAGE_MAX_WIDTH = Math.min(Number(window.APP_CONFIG.IMAGE_MAX_WIDTH || 960), 960);
+const IMAGE_QUALITY = Math.min(Number(window.APP_CONFIG.IMAGE_QUALITY || 0.65), 0.65);
 
 const STORAGE_KEYS = window.APP_CONFIG.STORAGE_KEYS || {
   INSPECTOR: 'riskpoint_inspector',
@@ -33,7 +33,8 @@ const STATE = {
   currentCameraStream: null,
   currentFacingMode: 'environment',
   summaryData: null,
-  activeSummaryDate: ''
+  activeSummaryDate: '',
+  currentGps: null
 };
 
 /************************************************************
@@ -795,9 +796,30 @@ function renderPhotoPreview(index, base64) {
 async function handleSaveInspection(e) {
   e.preventDefault();
 
-  const payload = buildInspectionPayload();
-  const validation = validateInspectionPayload(payload);
+  let payload = buildInspectionPayload();
+  let validation = validateInspectionPayload(payload, { requireGps: false });
 
+  if (!validation.ok) {
+    showWarning(validation.message);
+    return;
+  }
+
+  showLoading('กำลังตรวจสอบตำแหน่ง GPS...');
+
+  try {
+    const gps = await requireGpsLocation();
+    STATE.currentGps = gps;
+    payload = buildInspectionPayload();
+    payload.gps = gps;
+  } catch (err) {
+    Swal.close();
+    showError(err.message || 'ไม่สามารถอ่านตำแหน่ง GPS ได้');
+    return;
+  }
+
+  Swal.close();
+
+  validation = validateInspectionPayload(payload, { requireGps: true });
   if (!validation.ok) {
     showWarning(validation.message);
     return;
@@ -811,6 +833,8 @@ async function handleSaveInspection(e) {
         <p>สถานะพื้นที่: ${escapeHtml(payload.status)}</p>
         <p>วันที่รอบงาน: ${escapeHtml(payload.workDate)}</p>
         <p>ภาพยืนยัน: ครบ 2 ภาพ</p>
+        <p>GPS: ${escapeHtml(payload.gps.latitude)}, ${escapeHtml(payload.gps.longitude)}</p>
+        <p>ความแม่นยำ: ${escapeHtml(payload.gps.accuracy || '-')} เมตร</p>
       </div>
     `,
     icon: 'question',
@@ -826,7 +850,7 @@ async function handleSaveInspection(e) {
   showLoading('กำลังอัปโหลดภาพและบันทึกข้อมูล...');
 
   try {
-    const data = await apiPost('/api/save', payload, 150000);
+    const data = await apiPost('/api/save', payload, 90000);
 
     await Swal.fire({
       icon: 'success',
@@ -837,6 +861,7 @@ async function handleSaveInspection(e) {
           <p><b>ผู้ตรวจ:</b> ${escapeHtml(data.inspector)}</p>
           <p><b>เวลา:</b> ${escapeHtml(data.timestamp)}</p>
           <p><b>สถานะ:</b> ${escapeHtml(data.status)}</p>
+          <p><b>GPS:</b> ${escapeHtml(payload.gps.latitude)}, ${escapeHtml(payload.gps.longitude)}</p>
         </div>
       `,
       confirmButtonText: 'กลับหน้ารายการ',
@@ -867,46 +892,29 @@ function buildInspectionPayload() {
     riskLevel: $('#riskLevelSelect')?.value.trim() || '',
     correctiveAction: $('#correctiveActionInput')?.value.trim() || '',
     deviceInfo: navigator.userAgent || '',
-    images: [
-      STATE.images[1],
-      STATE.images[2]
-    ]
+    gps: STATE.currentGps,
+    images: [STATE.images[1], STATE.images[2]]
   };
 }
 
-function validateInspectionPayload(payload) {
-  if (!payload.inspector) {
-    return { ok: false, message: 'ไม่พบชื่อผู้ตรวจ กรุณาเข้าสู่ระบบใหม่' };
-  }
+function validateInspectionPayload(payload, options = {}) {
+  const requireGps = options.requireGps !== false;
 
-  if (!payload.point) {
-    return { ok: false, message: 'ไม่พบจุดเสี่ยงที่เลือก' };
-  }
-
-  if (!payload.workDate) {
-    return { ok: false, message: 'กรุณาเลือกวันที่รอบงาน' };
-  }
-
-  if (!payload.status) {
-    return { ok: false, message: 'กรุณาเลือกสถานะพื้นที่' };
-  }
+  if (!payload.inspector) return { ok: false, message: 'ไม่พบชื่อผู้ตรวจ กรุณาเข้าสู่ระบบใหม่' };
+  if (!payload.point) return { ok: false, message: 'ไม่พบจุดเสี่ยงที่เลือก' };
+  if (!payload.workDate) return { ok: false, message: 'กรุณาเลือกวันที่รอบงาน' };
+  if (!payload.status) return { ok: false, message: 'กรุณาเลือกสถานะพื้นที่' };
 
   if (payload.status === 'ผิดปกติ') {
-    if (!payload.abnormalDetail) {
-      return { ok: false, message: 'กรุณากรอกรายละเอียดความผิดปกติ' };
-    }
-
-    if (!payload.riskLevel) {
-      return { ok: false, message: 'กรุณาเลือกระดับความเสี่ยง' };
-    }
+    if (!payload.abnormalDetail) return { ok: false, message: 'กรุณากรอกรายละเอียดความผิดปกติ' };
+    if (!payload.riskLevel) return { ok: false, message: 'กรุณาเลือกระดับความเสี่ยง' };
   }
 
-  if (!payload.images[0] || !payload.images[0].base64) {
-    return { ok: false, message: 'กรุณาถ่ายภาพที่ 1' };
-  }
+  if (!payload.images[0] || !payload.images[0].base64) return { ok: false, message: 'กรุณาถ่ายภาพที่ 1' };
+  if (!payload.images[1] || !payload.images[1].base64) return { ok: false, message: 'กรุณาถ่ายภาพที่ 2' };
 
-  if (!payload.images[1] || !payload.images[1].base64) {
-    return { ok: false, message: 'กรุณาถ่ายภาพที่ 2' };
+  if (requireGps && (!payload.gps || payload.gps.latitude === undefined || payload.gps.longitude === undefined)) {
+    return { ok: false, message: 'กรุณาเปิด GPS และอนุญาตให้ระบบเข้าถึงตำแหน่งก่อนบันทึก' };
   }
 
   return { ok: true };
@@ -920,6 +928,7 @@ function resetInspectionForm(clearPoint = true) {
 
   STATE.images[1] = null;
   STATE.images[2] = null;
+  STATE.currentGps = null;
 
   resetPhotoPreview(1);
   resetPhotoPreview(2);
@@ -1199,6 +1208,46 @@ async function copySummaryText(day) {
       customClass: getSwalClass()
     });
   }
+}
+
+
+/************************************************************
+ * GPS
+ ************************************************************/
+
+function requireGpsLocation() {
+  return new Promise((resolve, reject) => {
+    if (!window.isSecureContext) {
+      reject(new Error('ระบบ GPS ต้องใช้งานผ่าน HTTPS เท่านั้น'));
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      reject(new Error('อุปกรณ์นี้ไม่รองรับ GPS กรุณาใช้อุปกรณ์ที่รองรับตำแหน่ง'));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const coords = position.coords;
+        resolve({
+          latitude: Number(coords.latitude).toFixed(8),
+          longitude: Number(coords.longitude).toFixed(8),
+          accuracy: coords.accuracy ? Math.round(coords.accuracy) : '',
+          timestamp: new Date().toISOString(),
+          mapUrl: `https://maps.google.com/maps?q=${coords.latitude},${coords.longitude}&z=20&t=k&output=embed`
+        });
+      },
+      error => {
+        let message = 'ไม่สามารถอ่านตำแหน่ง GPS ได้';
+        if (error.code === error.PERMISSION_DENIED) message = 'กรุณาอนุญาตสิทธิ์ตำแหน่ง GPS ก่อนบันทึก หากเคยกดบล็อก ให้เปิด Site settings แล้ว Allow Location';
+        else if (error.code === error.POSITION_UNAVAILABLE) message = 'ไม่พบสัญญาณ GPS กรุณาเปิด Location/GPS แล้วลองใหม่';
+        else if (error.code === error.TIMEOUT) message = 'อ่านตำแหน่ง GPS ไม่ทันเวลา กรุณาเปิด GPS แล้วลองใหม่อีกครั้ง';
+        reject(new Error(message));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
 }
 
 /************************************************************

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-  <title>ระบบบันทึกจุดเสี่ยงในพื้นที่ทำงาน</title>
+  <title>ระบบบันทึกจุดเสี่ยง</title>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -55,6 +55,7 @@
               autocomplete="off"
               required
             />
+
             <button id="togglePassBtn" type="button" class="ghost-mini-btn">
               แสดง
             </button>
@@ -109,20 +110,58 @@
           </button>
         </div>
 
-        <!-- Date Summary Panel -->
-        <div class="summary-panel">
+
+        <!-- Summary Filter Panel -->
+        <div class="summary-panel summary-panel-shift">
           <div>
             <h3>สรุปผลตรวจรายวัน</h3>
-            <p>เลือกวันที่เพื่อดูข้อมูลก่อนหน้า 1 วัน / วันที่เลือก / ถัดไป 1 วัน</p>
+            <p>
+              เลือกวันที่รอบงาน ผู้ตรวจ และกะทำงาน เพื่อแสดงผลสรุปให้ตรงรอบจริง
+              โดยเฉพาะกะ C และ NH ที่ทำงานข้ามวัน
+            </p>
           </div>
 
-          <div class="summary-date-row">
-            <input id="summaryDateInput" type="date" />
-            <button id="showSummaryBtn" type="button" class="primary-btn">
-              แสดงสรุป
-            </button>
+          <div class="summary-filter-grid">
+
+            <div class="form-group summary-filter-item">
+              <label for="summaryDateInput">วันที่รอบงาน</label>
+              <input id="summaryDateInput" type="date" />
+            </div>
+
+            <div class="form-group summary-filter-item">
+              <label for="summaryInspectorInput">ผู้ตรวจ</label>
+              <input
+                id="summaryInspectorInput"
+                type="text"
+                placeholder="ใช้ชื่อผู้ตรวจที่เข้าสู่ระบบ"
+                readonly
+              />
+              <small>ระบบจะใช้ชื่อพนักงานที่เข้าสู่ระบบเป็นตัวกรอง</small>
+            </div>
+
+            <div class="form-group summary-filter-item">
+              <label for="summaryShiftSelect">กะทำงาน</label>
+              <select id="summaryShiftSelect">
+                <option value="">ทุกกะ</option>
+                <option value="A">กะ A</option>
+                <option value="B">กะ B</option>
+                <option value="C">กะ C</option>
+                <option value="DH">กะ DH</option>
+                <option value="NH">กะ NH</option>
+              </select>
+              <small>กะ C และ NH ใช้วันที่รอบงาน ไม่ใช่วันที่หลังเที่ยงคืน</small>
+            </div>
+
+            <div class="form-group summary-filter-action">
+              <label>&nbsp;</label>
+              <button id="showSummaryBtn" type="button" class="primary-btn full-inline-btn">
+                แสดงสรุป
+              </button>
+            </div>
+
           </div>
         </div>
+
 
         <!-- Search -->
         <div class="search-panel">
@@ -130,9 +169,10 @@
           <input
             id="pointSearchInput"
             type="search"
-            placeholder="ค้นหาด้วยชื่อจุดเสี่ยง หรือพิกัด"
+            placeholder="ค้นหาด้วยชื่อจุดเสี่ยง พิกัด ผู้ตรวจ หรือสถานะล่าสุด"
           />
         </div>
+
 
         <!-- Stats -->
         <div class="mini-stats">
@@ -146,6 +186,7 @@
             <strong id="systemStatusText">พร้อมใช้งาน</strong>
           </div>
         </div>
+
 
         <!-- Point List -->
         <div id="pointList" class="point-grid">
@@ -206,14 +247,44 @@
             ></iframe>
           </div>
 
+
           <form id="inspectionForm" class="inspection-form" autocomplete="off">
 
-            <div class="form-grid">
+            <!-- Work Round -->
+            <div class="form-grid work-round-grid">
+
               <div class="form-group">
                 <label for="workDateInput">วันที่รอบงาน</label>
                 <input id="workDateInput" type="date" required />
-                <small>ใช้สำหรับงานกะที่อาจตรวจข้ามวัน</small>
+                <small>ใช้เป็นวันที่หลักสำหรับสรุปรายงาน แม้ตรวจหลังเที่ยงคืน</small>
               </div>
+
+              <div class="form-group">
+                <label for="workShiftSelect">กะทำงาน</label>
+                <select id="workShiftSelect" required>
+                  <option value="">เลือกกะทำงาน</option>
+                  <option value="A">กะ A</option>
+                  <option value="B">กะ B</option>
+                  <option value="C">กะ C</option>
+                  <option value="DH">กะ DH</option>
+                  <option value="NH">กะ NH</option>
+                </select>
+                <small>กะ C และ NH เป็นกะข้ามวัน ระบบจะยึดวันที่รอบงาน</small>
+              </div>
+
+            </div>
+
+            <div id="shiftHintBox" class="shift-hint-box hidden">
+              <strong>หมายเหตุสำหรับกะข้ามวัน</strong>
+              <span>
+                หากบันทึกหลังเที่ยงคืน ระบบจะยังใช้ “วันที่รอบงาน” ที่เลือกไว้
+                เพื่อให้สรุปผลไม่หลุดไปอยู่วันถัดไป
+              </span>
+            </div>
+
+
+            <!-- Status -->
+            <div class="form-grid">
 
               <div class="form-group">
                 <label for="statusSelect">สถานะพื้นที่</label>
@@ -223,9 +294,24 @@
                   <option value="ผิดปกติ">ผิดปกติ</option>
                 </select>
               </div>
+
+              <div class="form-group">
+                <label for="inspectionInspectorView">ผู้ตรวจที่บันทึก</label>
+                <input
+                  id="inspectionInspectorView"
+                  type="text"
+                  placeholder="ระบบจะใส่จากชื่อผู้เข้าสู่ระบบ"
+                  readonly
+                />
+                <small>ใช้เป็นตัวกรองร่วมกับวันที่รอบงานและกะทำงาน</small>
+              </div>
+
             </div>
 
+
+            <!-- Abnormal -->
             <div id="abnormalBox" class="abnormal-box hidden">
+
               <div class="form-group">
                 <label for="abnormalDetailInput">รายละเอียดความผิดปกติ</label>
                 <textarea
@@ -236,6 +322,7 @@
               </div>
 
               <div class="form-grid">
+
                 <div class="form-group">
                   <label for="riskLevelSelect">ระดับความเสี่ยง</label>
                   <select id="riskLevelSelect">
@@ -254,9 +341,12 @@
                     placeholder="เช่น แจ้งหัวหน้างาน / กั้นพื้นที่ / รอซ่อม"
                   />
                 </div>
+
               </div>
             </div>
 
+
+            <!-- Photo -->
             <div class="photo-section">
               <div class="photo-title-row">
                 <div>
@@ -269,12 +359,13 @@
 
                 <label class="photo-box" for="photoInput1">
                   <input
-  id="photoInput1"
-  type="file"
-  accept="image/*"
-  capture="environment"
-  style="position:fixed;left:-9999px;top:-9999px;opacity:0;"
-/>
+                    id="photoInput1"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style="position:fixed;left:-9999px;top:-9999px;opacity:0;"
+                  />
+
                   <div id="photoPreview1" class="photo-preview">
                     <div class="photo-placeholder">
                       <span>📷</span>
@@ -286,12 +377,13 @@
 
                 <label class="photo-box" for="photoInput2">
                   <input
-  id="photoInput2"
-  type="file"
-  accept="image/*"
-  capture="environment"
-  style="position:fixed;left:-9999px;top:-9999px;opacity:0;"
-/>
+                    id="photoInput2"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style="position:fixed;left:-9999px;top:-9999px;opacity:0;"
+                  />
+
                   <div id="photoPreview2" class="photo-preview">
                     <div class="photo-placeholder">
                       <span>📷</span>
@@ -304,6 +396,8 @@
               </div>
             </div>
 
+
+            <!-- Submit -->
             <div class="submit-panel">
               <button id="resetInspectionBtn" type="button" class="soft-btn">
                 ล้างข้อมูล
@@ -335,8 +429,12 @@
       IMAGE_QUALITY: 0.8,
       STORAGE_KEYS: {
         INSPECTOR: 'riskpoint_inspector',
-        LOGIN_TIME: 'riskpoint_login_time'
-      }
+        LOGIN_TIME: 'riskpoint_login_time',
+        WORK_SHIFT: 'riskpoint_work_shift',
+        WORK_DATE: 'riskpoint_work_date'
+      },
+      WORK_SHIFTS: ['A', 'B', 'C', 'DH', 'NH'],
+      CROSS_DAY_SHIFTS: ['C', 'NH']
     };
   </script>
 

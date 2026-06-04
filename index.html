@@ -6,30 +6,23 @@
 
   <title>ระบบบันทึกจุดเสี่ยง</title>
 
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap"
     rel="stylesheet"
   >
 
-  <!-- SweetAlert2 -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-  <!-- CSS -->
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
   <div id="app" class="app-shell">
 
-    <!-- =========================
-      LOGIN SECTION
-    ========================== -->
+    <!-- LOGIN -->
     <section id="loginSection" class="page-section login-section active">
       <div class="login-card">
-
         <img
           class="company-logo login-logo"
           src="https://lh5.googleusercontent.com/d/1HicYHV18UaA5y4GFyHJaG9aNI-qjIzIY"
@@ -69,21 +62,23 @@
         <div class="login-footer">
           <span id="loginStatusText">ระบบพร้อมตรวจสอบข้อมูล</span>
         </div>
-
       </div>
     </section>
 
 
-    <!-- =========================
-      MAIN SECTION
-    ========================== -->
+    <!-- MAIN -->
     <section id="mainSection" class="page-section main-section">
 
-      <header class="topbar">
-        <div>
+      <header class="topbar app-toolbar">
+        <div class="toolbar-left">
           <div class="topbar-kicker">Risk Point Inspection</div>
-          <h2>บันทึกจุดเสี่ยง</h2>
+          <h2>ระบบบันทึกจุดเสี่ยง</h2>
           <p id="welcomeText">ผู้ตรวจ: -</p>
+        </div>
+
+        <div class="toolbar-status">
+          <span>สถานะระบบ</span>
+          <strong id="systemStatusText">พร้อมใช้งาน</strong>
         </div>
 
         <img
@@ -95,8 +90,7 @@
 
       <main class="main-content">
 
-        <!-- Action Panel -->
-        <div class="action-panel">
+        <section class="control-bar">
           <button id="refreshPointsBtn" type="button" class="soft-btn">
             โหลดจุดเสี่ยงใหม่
           </button>
@@ -108,18 +102,16 @@
           <button id="logoutBtn" type="button" class="danger-soft-btn">
             ออกจากระบบ
           </button>
-        </div>
+        </section>
 
 
-        <!-- Summary Filter Panel -->
-        <div class="summary-panel summary-panel-shift">
-          <div>
+        <section class="summary-panel summary-panel-shift">
+          <div class="summary-title">
+            <span class="panel-kicker">Daily Report</span>
             <h3>สรุปผลตรวจรายวัน</h3>
-           
           </div>
 
           <div class="summary-filter-grid">
-
             <div class="form-group summary-filter-item">
               <label for="summaryDateInput">วันที่รอบงาน</label>
               <input id="summaryDateInput" type="date" />
@@ -133,7 +125,7 @@
                 placeholder="ใช้ชื่อผู้ตรวจที่เข้าสู่ระบบ"
                 readonly
               />
-              <small>ระบบจะใช้ชื่อเป็นตัวกรอง</small>
+              <small>ใช้ชื่อเป็นตัวกรอง</small>
             </div>
 
             <div class="form-group summary-filter-item">
@@ -155,37 +147,37 @@
                 แสดงสรุป
               </button>
             </div>
-
           </div>
-        </div>
+        </section>
 
 
-        <!-- Search -->
-        <div class="search-panel">
-          <label for="pointSearchInput">ค้นหาจุดเสี่ยง</label>
+        <section class="search-panel">
+          <div class="search-title-row">
+            <label for="pointSearchInput">ค้นหาจุดเสี่ยง</label>
+            <span>ค้นหาจากชื่อจุด พิกัด ผู้ตรวจ หรือสถานะล่าสุด</span>
+          </div>
+
           <input
             id="pointSearchInput"
             type="search"
-            placeholder="ค้นหาด้วยชื่อจุดเสี่ยง พิกัด ผู้ตรวจ หรือสถานะล่าสุด"
+            placeholder="พิมพ์คำค้นหา..."
           />
-        </div>
+        </section>
 
 
-        <!-- Stats -->
-        <div class="mini-stats">
+        <section class="mini-stats">
           <div class="mini-stat-card">
             <span>จุดเสี่ยงทั้งหมด</span>
             <strong id="totalPointText">0</strong>
           </div>
 
           <div class="mini-stat-card">
-            <span>สถานะระบบ</span>
-            <strong id="systemStatusText">พร้อมใช้งาน</strong>
+            <span>รูปแบบการแสดงผล</span>
+            <strong>รายการตรวจ</strong>
           </div>
-        </div>
+        </section>
 
 
-        <!-- Point List -->
         <div id="pointList" class="point-grid">
           <!-- app.js render cards here -->
         </div>
@@ -200,13 +192,11 @@
     </section>
 
 
-    <!-- =========================
-      INSPECTION SECTION
-    ========================== -->
+    <!-- INSPECTION -->
     <section id="inspectionSection" class="page-section inspection-section">
 
-      <header class="topbar compact-topbar">
-        <div>
+      <header class="topbar compact-topbar app-toolbar">
+        <div class="toolbar-left">
           <div class="topbar-kicker">Inspection Form</div>
           <h2>บันทึกผลตรวจจุดเสี่ยง</h2>
           <p id="inspectionInspectorText">ผู้ตรวจ: -</p>
@@ -247,9 +237,7 @@
 
           <form id="inspectionForm" class="inspection-form" autocomplete="off">
 
-            <!-- Work Round -->
             <div class="form-grid work-round-grid">
-
               <div class="form-group">
                 <label for="workDateInput">วันที่รอบงาน</label>
                 <input id="workDateInput" type="date" required />
@@ -268,7 +256,6 @@
                 </select>
                 <small>กะ C และ NH ระบบจะยึดวันที่รอบงาน</small>
               </div>
-
             </div>
 
             <div id="shiftHintBox" class="shift-hint-box hidden">
@@ -279,9 +266,7 @@
             </div>
 
 
-            <!-- Status -->
             <div class="form-grid">
-
               <div class="form-group">
                 <label for="statusSelect">สถานะพื้นที่</label>
                 <select id="statusSelect" required>
@@ -301,11 +286,9 @@
                 />
                 <small>ใช้เป็นตัวกรองร่วมกับวันที่รอบงานและกะทำงาน</small>
               </div>
-
             </div>
 
 
-            <!-- Abnormal -->
             <div id="abnormalBox" class="abnormal-box hidden">
 
               <div class="form-group">
@@ -318,7 +301,6 @@
               </div>
 
               <div class="form-grid">
-
                 <div class="form-group">
                   <label for="riskLevelSelect">ระดับความเสี่ยง</label>
                   <select id="riskLevelSelect">
@@ -337,12 +319,10 @@
                     placeholder="เช่น แจ้งหัวหน้างาน / กั้นพื้นที่ / รอซ่อม"
                   />
                 </div>
-
               </div>
             </div>
 
 
-            <!-- Photo -->
             <div class="photo-section">
               <div class="photo-title-row">
                 <div>
@@ -393,7 +373,6 @@
             </div>
 
 
-            <!-- Submit -->
             <div class="submit-panel">
               <button id="resetInspectionBtn" type="button" class="soft-btn">
                 ล้างข้อมูล
@@ -414,9 +393,6 @@
   </div>
 
 
-  <!-- =========================
-    App Config
-  ========================== -->
   <script>
     window.APP_CONFIG = {
       API_BASE: 'https://riskpoint.somchaibutphon.workers.dev',
@@ -434,7 +410,6 @@
     };
   </script>
 
-  <!-- App JS -->
   <script src="./app.js"></script>
 </body>
 </html>

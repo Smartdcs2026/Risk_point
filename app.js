@@ -15,40 +15,15 @@
  ************************************************************/
 
 const API_BASE = window.APP_CONFIG.API_BASE;
-
-/************************************************************
- * App Module
- * - risk = ระบบเดิม ใช้ Name / Sheet1 / Data
- * - security = ระบบ Security ใช้ Security_Name / Security_Point / Data_Security
- *
- * ถ้าไม่กำหนดใน config.js จะใช้ risk เสมอ เพื่อไม่กระทบระบบเดิม
- ************************************************************/
-
-const APP_MODULE = String(window.APP_CONFIG.APP_MODULE || 'risk').trim().toLowerCase();
-
-function getAppModule() {
-  return APP_MODULE === 'security' ? 'security' : 'risk';
-}
 const LOGO_URL = window.APP_CONFIG.LOGO_URL;
 const IMAGE_MAX_WIDTH = Math.min(Number(window.APP_CONFIG.IMAGE_MAX_WIDTH || 960), 960);
 const IMAGE_QUALITY = Math.min(Number(window.APP_CONFIG.IMAGE_QUALITY || 0.65), 0.65);
 
-const BASE_STORAGE_KEYS = window.APP_CONFIG.STORAGE_KEYS || {
+const STORAGE_KEYS = window.APP_CONFIG.STORAGE_KEYS || {
   INSPECTOR: 'riskpoint_inspector',
   LOGIN_TIME: 'riskpoint_login_time',
   WORK_SHIFT: 'riskpoint_work_shift',
   WORK_DATE: 'riskpoint_work_date'
-};
-
-const STORAGE_PREFIX = getAppModule() === 'security'
-  ? 'security'
-  : 'risk';
-
-const STORAGE_KEYS = {
-  INSPECTOR: `${STORAGE_PREFIX}_${BASE_STORAGE_KEYS.INSPECTOR}`,
-  LOGIN_TIME: `${STORAGE_PREFIX}_${BASE_STORAGE_KEYS.LOGIN_TIME}`,
-  WORK_SHIFT: `${STORAGE_PREFIX}_${BASE_STORAGE_KEYS.WORK_SHIFT}`,
-  WORK_DATE: `${STORAGE_PREFIX}_${BASE_STORAGE_KEYS.WORK_DATE}`
 };
 
 const WORK_SHIFTS = Array.isArray(window.APP_CONFIG.WORK_SHIFTS)
@@ -87,7 +62,6 @@ const STATE = {
 document.addEventListener('DOMContentLoaded', initApp);
 
 function initApp() {
-  applyModuleUiText();
   injectDynamicStyles();
   bindEvents();
   setDefaultDates();
@@ -159,9 +133,7 @@ function restoreLogin() {
  ************************************************************/
 
 async function apiGet(path, timeoutMs = 45000) {
-  const url = buildApiUrl(path);
-
-  const res = await fetchWithTimeout(url, {
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'GET',
     headers: {
       Accept: 'application/json'
@@ -170,31 +142,20 @@ async function apiGet(path, timeoutMs = 45000) {
 
   return parseApiResponse(res);
 }
-async function apiPost(path, payload, timeoutMs = 120000) {
-  const body = {
-    ...(payload || {}),
-    module: getAppModule()
-  };
 
+async function apiPost(path, payload, timeoutMs = 120000) {
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json'
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(payload || {})
   }, timeoutMs);
 
   return parseApiResponse(res);
 }
-function buildApiUrl(path) {
-  const base = `${API_BASE}${path}`;
-  const url = new URL(base, window.location.origin);
 
-  url.searchParams.set('module', getAppModule());
-
-  return url.toString();
-}
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -232,13 +193,7 @@ async function parseApiResponse(res) {
 
 async function apiHealth() {
   const data = await apiGet('/api/health');
-
-  const moduleText = getAppModule() === 'security'
-    ? 'Security'
-    : 'Risk Point';
-
-  setText('systemStatusText', data.ok ? `พร้อมใช้งาน (${moduleText})` : 'ผิดปกติ');
-
+  setText('systemStatusText', data.ok ? 'พร้อมใช้งาน' : 'ผิดปกติ');
   return data;
 }
 
@@ -259,10 +214,7 @@ async function handleLogin(e) {
   setButtonLoading('loginBtn', true, 'กำลังตรวจสอบ...');
 
   try {
-    const data = await apiPost('/api/login', {
-  module: getAppModule(),
-  pass
-}, 45000);
+    const data = await apiPost('/api/login', { pass }, 45000);
 
     STATE.inspector = data.inspector;
     localStorage.setItem(STORAGE_KEYS.INSPECTOR, data.inspector);
@@ -274,7 +226,7 @@ async function handleLogin(e) {
     await Swal.fire({
       icon: 'success',
       title: 'เข้าสู่ระบบสำเร็จ',
-     text: `${getAppModule() === 'security' ? 'Security: ' : 'ผู้ตรวจ: '}${data.inspector}`,
+      text: `ผู้ตรวจ: ${data.inspector}`,
       timer: 1000,
       showConfirmButton: false,
       customClass: getSwalClass()
@@ -334,17 +286,8 @@ function logout() {
 }
 
 function updateInspectorUI() {
-  const label = getInspectorLabel();
-
-  setText('welcomeText', `${label}: ${STATE.inspector}`);
-  setText('inspectionInspectorText', `${label}: ${STATE.inspector}`);
-
-  const summaryInspectorInput = $('#summaryInspectorInput');
-  if (summaryInspectorInput) summaryInspectorInput.value = STATE.inspector || '';
-
-  const inspectionInspectorView = $('#inspectionInspectorView');
-  if (inspectionInspectorView) inspectionInspectorView.value = STATE.inspector || '';
-}
+  setText('welcomeText', `ผู้ตรวจ: ${STATE.inspector}`);
+  setText('inspectionInspectorText', `ผู้ตรวจ: ${STATE.inspector}`);
 
   const summaryInspectorInput = $('#summaryInspectorInput');
   if (summaryInspectorInput) summaryInspectorInput.value = STATE.inspector || '';
@@ -1073,7 +1016,6 @@ function buildInspectionPayload() {
   const status = $('#statusSelect')?.value.trim() || '';
 
   return {
-    module: getAppModule(),
     inspector: STATE.inspector,
     point: STATE.selectedPoint?.point || '',
     coordinates: STATE.selectedPoint?.coordinates || '',
@@ -1255,12 +1197,11 @@ async function loadSummary(inputDate) {
       workShift
     };
 
-  const query = new URLSearchParams({
-  module: getAppModule(),
-  date: dateText,
-  inspector,
-  workShift
-});
+    const query = new URLSearchParams({
+      date: dateText,
+      inspector,
+      workShift
+    });
 
     const data = await apiGet(`/api/summary?${query.toString()}`, 60000);
 
@@ -2445,18 +2386,6 @@ function thaiDateToInput(thaiDate) {
   return `${y}-${m}-${d}`;
 }
 
-
-function getModuleLabel() {
-  return getAppModule() === 'security'
-    ? 'ระบบตรวจจุดเสี่ยง Security'
-    : 'ระบบบันทึกจุดเสี่ยง';
-}
-
-function getInspectorLabel() {
-  return getAppModule() === 'security'
-    ? 'Security'
-    : 'ผู้ตรวจ';
-}
 /************************************************************
  * Escape Helpers
  ************************************************************/
@@ -2838,36 +2767,4 @@ function extractDriveFileIdFromUrl(url) {
 
 function $(selector) {
   return document.querySelector(selector);
-}
-function applyModuleUiText() {
-  const moduleLabel = getModuleLabel();
-
-  document.title = moduleLabel;
-
-  const titleNodes = document.querySelectorAll('h1, h2');
-
-  titleNodes.forEach(node => {
-    const text = String(node.textContent || '').trim();
-
-    if (
-      text === 'ระบบบันทึกจุดเสี่ยง' ||
-      text === 'ระบบตรวจจุดเสี่ยง Security'
-    ) {
-      node.textContent = moduleLabel;
-    }
-  });
-
-  const loginSubtitle = document.querySelector('.login-header p');
-  if (loginSubtitle) {
-    loginSubtitle.textContent = getAppModule() === 'security'
-      ? 'เข้าสู่ระบบด้วยรหัส Security'
-      : 'เข้าสู่ระบบด้วยรหัส พนง.';
-  }
-
-  const badge = document.querySelector('.system-badge');
-  if (badge) {
-    badge.textContent = getAppModule() === 'security'
-      ? 'Security Check'
-      : 'Workplace Safety';
-  }
 }

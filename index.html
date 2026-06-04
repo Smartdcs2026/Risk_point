@@ -15,6 +15,146 @@
 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <link rel="stylesheet" href="./styles.css" />
+
+  <!-- แก้เฉพาะ Layout กล่องสรุป ไม่ให้เป็นขั้นบันได -->
+  <style>
+    .summary-panel.summary-flat-panel {
+      display: block !important;
+      padding: 12px !important;
+      overflow: hidden !important;
+    }
+
+    .summary-flat-header {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+      margin-bottom: 10px !important;
+      min-width: 0 !important;
+    }
+
+    .summary-flat-header .panel-kicker {
+      display: inline-flex !important;
+      flex: 0 0 auto !important;
+      margin: 0 !important;
+      padding: 4px 9px !important;
+      border-radius: 999px !important;
+      font-size: 10.5px !important;
+      line-height: 1.2 !important;
+    }
+
+    .summary-flat-header h3 {
+      margin: 0 !important;
+      padding: 0 !important;
+      color: var(--primary, #073b66) !important;
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif) !important;
+      font-size: 16px !important;
+      line-height: 1.25 !important;
+      white-space: nowrap !important;
+    }
+
+    .summary-flat-row {
+      display: grid !important;
+      grid-template-columns: minmax(150px, 0.9fr) minmax(170px, 1fr) minmax(140px, 0.8fr) minmax(120px, 0.62fr) !important;
+      gap: 10px !important;
+      align-items: end !important;
+      width: 100% !important;
+      min-width: 0 !important;
+    }
+
+    .summary-flat-field {
+      min-width: 0 !important;
+      margin: 0 !important;
+    }
+
+    .summary-flat-field label {
+      display: block !important;
+      height: 18px !important;
+      line-height: 18px !important;
+      margin: 0 0 6px !important;
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif) !important;
+      font-size: 11.8px !important;
+      font-weight: 800 !important;
+      color: var(--text-main, #0f172a) !important;
+      white-space: nowrap !important;
+    }
+
+    .summary-flat-field input,
+    .summary-flat-field select,
+    .summary-flat-field button {
+      width: 100% !important;
+      height: 40px !important;
+      min-height: 40px !important;
+      max-height: 40px !important;
+      border-radius: 12px !important;
+      font-size: 12.5px !important;
+    }
+
+    .summary-flat-field small {
+      display: block !important;
+      height: 15px !important;
+      margin-top: 4px !important;
+      color: var(--text-muted, #64748b) !important;
+      font-size: 10.5px !important;
+      line-height: 15px !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+      text-overflow: ellipsis !important;
+    }
+
+    .summary-flat-action label {
+      visibility: hidden !important;
+    }
+
+    .summary-flat-action button {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 !important;
+      padding: 8px 12px !important;
+      white-space: nowrap !important;
+    }
+
+    .summary-flat-action small {
+      visibility: hidden !important;
+    }
+
+    @media (max-width: 620px) {
+      .summary-flat-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+      }
+
+      .summary-flat-action {
+        grid-column: 1 / -1 !important;
+      }
+
+      .summary-flat-action label {
+        display: none !important;
+      }
+
+      .summary-flat-action small {
+        display: none !important;
+      }
+
+      .summary-flat-field small {
+        display: none !important;
+      }
+
+      .summary-flat-action button {
+        margin-top: 0 !important;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .summary-flat-row {
+        grid-template-columns: 1fr !important;
+      }
+
+      .summary-flat-header .panel-kicker {
+        display: none !important;
+      }
+    }
+  </style>
 </head>
 
 <body>
@@ -105,19 +245,22 @@
         </section>
 
 
-        <section class="summary-panel summary-panel-shift">
-          <div class="summary-title">
+        <!-- SUMMARY FILTER: แก้ใหม่ไม่ให้เป็นขั้นบันได -->
+        <section class="summary-panel summary-panel-shift summary-flat-panel">
+          <div class="summary-flat-header">
             <span class="panel-kicker">Daily Report</span>
             <h3>สรุปผลตรวจรายวัน</h3>
           </div>
 
-          <div class="summary-filter-grid">
-            <div class="form-group summary-filter-item">
+          <div class="summary-flat-row">
+
+            <div class="summary-flat-field">
               <label for="summaryDateInput">วันที่รอบงาน</label>
               <input id="summaryDateInput" type="date" />
+              <small>&nbsp;</small>
             </div>
 
-            <div class="form-group summary-filter-item">
+            <div class="summary-flat-field">
               <label for="summaryInspectorInput">ผู้ตรวจ</label>
               <input
                 id="summaryInspectorInput"
@@ -128,7 +271,7 @@
               <small>ใช้ชื่อเป็นตัวกรอง</small>
             </div>
 
-            <div class="form-group summary-filter-item">
+            <div class="summary-flat-field">
               <label for="summaryShiftSelect">กะทำงาน</label>
               <select id="summaryShiftSelect">
                 <option value="">ทุกกะ</option>
@@ -141,12 +284,14 @@
               <small>กะ C และ NH ใช้วันที่รอบงาน</small>
             </div>
 
-            <div class="form-group summary-filter-action">
-              <label>&nbsp;</label>
+            <div class="summary-flat-field summary-flat-action">
+              <label for="showSummaryBtn">แสดงสรุป</label>
               <button id="showSummaryBtn" type="button" class="primary-btn full-inline-btn">
                 แสดงสรุป
               </button>
+              <small>&nbsp;</small>
             </div>
+
           </div>
         </section>
 

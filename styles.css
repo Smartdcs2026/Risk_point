@@ -2180,81 +2180,102 @@ input[readonly] {
   }
 }
 /************************************************************
- * PATCH: Summary Filter One-Line Layout
- * วางท้ายไฟล์ styles.css
- * ทำให้ วันที่รอบงาน / ผู้ตรวจ / กะทำงาน / แสดงสรุป อยู่แนวเดียวกัน
+ * FINAL PATCH: Fix Summary Overflow / Button Clipping
+ * วางท้ายไฟล์ styles.css เท่านั้น
+ * แก้ปัญหาปุ่ม "แสดงสรุป" ถูกดัน/ถูกตัดด้านขวา
  ************************************************************/
 
-/* กล่อง Summary ให้เป็น 2 ส่วน: หัวข้อซ้าย + ตัวกรองขวา */
+/* ยกเลิก layout แบบซ้ายหัวข้อ + ขวาฟิลเตอร์ เพราะทำให้พื้นที่ไม่พอ */
 .summary-panel.summary-panel-shift {
   display: grid !important;
-  grid-template-columns: 220px minmax(0, 1fr) !important;
-  gap: 14px !important;
-  align-items: end !important;
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
   padding: 12px !important;
 }
 
-/* หัวข้อด้านซ้าย */
+/* หัวข้ออยู่บรรทัดบน */
 .summary-panel .summary-title {
-  display: block !important;
-  align-self: end !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
   min-width: 0 !important;
+  align-self: auto !important;
 }
 
 .summary-panel .panel-kicker {
   display: inline-flex !important;
-  margin: 0 0 7px 0 !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  padding: 4px 9px !important;
+  font-size: 10.5px !important;
+  line-height: 1.2 !important;
 }
 
 .summary-panel .summary-title h3 {
   margin: 0 !important;
   padding: 0 !important;
   transform: none !important;
+  white-space: nowrap !important;
   font-size: 16px !important;
   line-height: 1.25 !important;
-  white-space: normal !important;
 }
 
-/* ตัวกรองทั้งหมดเรียงแถวเดียว */
+/* ฟิลเตอร์อยู่บรรทัดเดียวกัน: วันที่ | ผู้ตรวจ | กะ | ปุ่ม */
 .summary-filter-grid {
   display: grid !important;
   grid-template-columns:
-    minmax(145px, 0.95fr)
-    minmax(160px, 1fr)
-    minmax(135px, 0.85fr)
-    minmax(120px, 0.75fr) !important;
-  gap: 10px !important;
+    minmax(140px, 0.9fr)
+    minmax(150px, 1fr)
+    minmax(125px, 0.85fr)
+    minmax(112px, 0.65fr) !important;
+  gap: 8px !important;
   align-items: end !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
 }
 
-/* กันช่องล้น */
 .summary-filter-grid .form-group,
 .summary-filter-grid .summary-filter-item,
 .summary-filter-grid .summary-filter-action {
   min-width: 0 !important;
+  max-width: 100% !important;
   margin: 0 !important;
 }
 
-/* label ความสูงเท่ากันทุกช่อง */
+/* label ทุกช่องสูงเท่ากัน */
 .summary-filter-grid label {
   display: block !important;
-  height: 18px !important;
-  margin: 0 0 6px !important;
-  line-height: 18px !important;
+  height: 17px !important;
+  line-height: 17px !important;
+  margin: 0 0 5px !important;
+  font-size: 11.5px !important;
+  white-space: nowrap !important;
 }
 
-/* input/select/button สูงเท่ากัน */
+/* ช่องและปุ่มสูงเท่ากัน */
 .summary-filter-grid input,
 .summary-filter-grid select,
 .summary-filter-grid button {
-  height: 40px !important;
-  min-height: 40px !important;
-  border-radius: 12px !important;
+  width: 100% !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  max-height: 38px !important;
+  border-radius: 11px !important;
+  font-size: 12.5px !important;
 }
 
-/* ปุ่มให้อยู่ระดับเดียวกับช่องอื่น */
+/* ปุ่มไม่ให้ถูกตัด */
 .summary-filter-action {
   align-self: end !important;
+  overflow: visible !important;
 }
 
 .summary-filter-action label {
@@ -2262,76 +2283,35 @@ input[readonly] {
 }
 
 .summary-filter-action .primary-btn {
-  width: 100% !important;
-  padding: 8px 12px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   margin: 0 !important;
+  padding: 8px 10px !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
 }
 
-/* ข้อความ small อยู่ใต้ช่อง แต่ไม่ดัน Layout ให้เพี้ยน */
+/* ลบ pseudo spacer จาก patch ก่อนหน้า */
+.summary-filter-action::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* ข้อความใต้ช่องไม่ดันความสูง และไม่ทำให้ Layout แตก */
 .summary-filter-item small {
   display: block !important;
-  height: 16px !important;
-  margin-top: 4px !important;
+  height: 14px !important;
+  margin-top: 3px !important;
   overflow: hidden !important;
   white-space: nowrap !important;
   text-overflow: ellipsis !important;
-  font-size: 11px !important;
-  line-height: 16px !important;
+  font-size: 10.5px !important;
+  line-height: 14px !important;
 }
 
-/* ปุ่มไม่มี small ให้เติมพื้นที่หลอก เพื่อให้ความสูงคุมง่าย */
-.summary-filter-action::after {
-  content: "";
-  display: block;
-  height: 20px;
-}
-
-/* จอกลางยังให้คงแถวเดียว ถ้าพื้นที่พอ */
-@media (max-width: 1024px) {
-  .summary-panel.summary-panel-shift {
-    grid-template-columns: 170px minmax(0, 1fr) !important;
-    gap: 10px !important;
-  }
-
-  .summary-filter-grid {
-    grid-template-columns:
-      minmax(130px, 0.9fr)
-      minmax(145px, 1fr)
-      minmax(120px, 0.8fr)
-      minmax(110px, 0.72fr) !important;
-    gap: 8px !important;
-  }
-
-  .summary-filter-grid label {
-    font-size: 11.5px !important;
-  }
-
-  .summary-filter-item small {
-    display: none !important;
-  }
-
-  .summary-filter-action::after {
-    display: none !important;
-  }
-}
-
-/* มือถือแนวตั้งค่อยเปลี่ยนเป็น 2 คอลัมน์ */
+/* จอแคบมากจึงค่อยแตกเป็น 2 คอลัมน์ */
 @media (max-width: 620px) {
-  .summary-panel.summary-panel-shift {
-    grid-template-columns: 1fr !important;
-    gap: 9px !important;
-  }
-
-  .summary-panel .summary-title {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-  }
-
-  .summary-panel .panel-kicker {
-    margin: 0 !important;
-  }
-
   .summary-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
@@ -2346,21 +2326,21 @@ input[readonly] {
   }
 
   .summary-filter-action .primary-btn {
-    width: 100% !important;
+    margin-top: 2px !important;
+  }
+
+  .summary-filter-item small {
+    display: none !important;
   }
 }
 
-/* มือถือแคบมากเรียง 1 คอลัมน์ */
-@media (max-width: 380px) {
-  .summary-filter-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .summary-panel .summary-title {
-    display: block !important;
-  }
-
+/* จอเล็กสุด */
+@media (max-width: 360px) {
   .summary-panel .panel-kicker {
     display: none !important;
+  }
+
+  .summary-filter-grid {
+    grid-template-columns: 1fr !important;
   }
 }

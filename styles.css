@@ -2179,3 +2179,130 @@ input[readonly] {
     display: none !important;
   }
 }
+/************************************************************
+ * PATCH: Summary Panel Layout Fix
+ * วางท้ายไฟล์ styles.css
+ * แก้ปัญหา "สรุปผลตรวจรายวัน" และปุ่มแสดงสรุปวางตำแหน่งแปลก
+ ************************************************************/
+
+/* ให้กล่อง Summary เป็นหัวข้อบน + ตัวกรองด้านล่างเสมอ */
+.summary-panel.summary-panel-shift {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+  padding: 12px !important;
+}
+
+/* หัวข้อ Summary ไม่ต้องไปเบียดกับช่องกรอง */
+.summary-panel .summary-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+}
+
+.summary-panel .summary-title h3 {
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  font-size: 16px !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+}
+
+.summary-panel .panel-kicker {
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+}
+
+/* แถวตัวกรองแบบ Desktop */
+.summary-filter-grid {
+  display: grid !important;
+  grid-template-columns: minmax(145px, 0.9fr) minmax(170px, 1fr) minmax(145px, 0.85fr) minmax(120px, 0.7fr) !important;
+  gap: 10px !important;
+  align-items: end !important;
+}
+
+.summary-filter-grid .form-group {
+  min-width: 0 !important;
+}
+
+.summary-filter-action {
+  align-self: end !important;
+}
+
+.summary-filter-action label {
+  display: block !important;
+  height: 18px !important;
+  margin: 0 0 6px !important;
+  visibility: hidden !important;
+}
+
+.summary-filter-action .primary-btn {
+  width: 100% !important;
+  min-height: 40px !important;
+  height: 40px !important;
+  padding: 8px 12px !important;
+  border-radius: 12px !important;
+}
+
+/* หน้าจอกลางแบบในภาพ: ให้เรียง 2 คอลัมน์ ไม่อัดเป็น 4 ช่อง */
+@media (max-width: 900px) {
+  .summary-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+  }
+
+  .summary-filter-action {
+    grid-column: 1 / -1 !important;
+  }
+
+  .summary-filter-action label {
+    display: none !important;
+  }
+
+  .summary-filter-action .primary-btn {
+    margin-top: 2px !important;
+  }
+
+  .summary-filter-item small {
+    display: block !important;
+    min-height: 0 !important;
+    font-size: 11px !important;
+  }
+}
+
+/* มือถือเล็กมาก: เรียงเป็นคอลัมน์เดียว อ่านง่าย ไม่เบียด */
+@media (max-width: 430px) {
+  .summary-panel.summary-panel-shift {
+    padding: 10px !important;
+  }
+
+  .summary-panel .summary-title {
+    display: block !important;
+  }
+
+  .summary-panel .panel-kicker {
+    display: none !important;
+  }
+
+  .summary-panel .summary-title h3 {
+    white-space: normal !important;
+    font-size: 15px !important;
+  }
+
+  .summary-filter-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .summary-filter-item small {
+    display: none !important;
+  }
+
+  .summary-filter-action {
+    grid-column: auto !important;
+  }
+}

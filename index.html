@@ -39,11 +39,11 @@
         <div class="login-header">
           <div class="system-badge">Workplace Safety</div>
           <h1>ระบบบันทึกจุดเสี่ยง</h1>
-          <p>เข้าสู่ระบบด้วยรหัสผู้ตรวจจาก Google Sheet</p>
+          <p>เข้าสู่ระบบด้วยรหัส พนง.</p>
         </div>
 
         <form id="loginForm" class="login-form" autocomplete="off">
-          <label class="form-label" for="passInput">รหัสผู้ตรวจ</label>
+          <label class="form-label" for="passInput">รหัส</label>
 
           <div class="password-box">
             <input
@@ -82,7 +82,7 @@
       <header class="topbar">
         <div>
           <div class="topbar-kicker">Risk Point Inspection</div>
-          <h2>บันทึกจุดเสี่ยงในพื้นที่ทำงาน</h2>
+          <h2>บันทึกจุดเสี่ยง</h2>
           <p id="welcomeText">ผู้ตรวจ: -</p>
         </div>
 
@@ -136,7 +136,7 @@
                 placeholder="ใช้ชื่อผู้ตรวจที่เข้าสู่ระบบ"
                 readonly
               />
-              <small>ระบบจะใช้ชื่อพนักงานที่เข้าสู่ระบบเป็นตัวกรอง</small>
+              <small>ระบบจะใช้ชื่อเป็นตัวกรอง</small>
             </div>
 
             <div class="form-group summary-filter-item">
@@ -149,7 +149,7 @@
                 <option value="DH">กะ DH</option>
                 <option value="NH">กะ NH</option>
               </select>
-              <small>กะ C และ NH ใช้วันที่รอบงาน ไม่ใช่วันที่หลังเที่ยงคืน</small>
+              <small>กะ C และ NH ใช้วันที่รอบงาน</small>
             </div>
 
             <div class="form-group summary-filter-action">
@@ -196,7 +196,7 @@
         <div id="emptyPointState" class="empty-state hidden">
           <div class="empty-icon">📍</div>
           <h3>ยังไม่พบข้อมูลจุดเสี่ยง</h3>
-          <p>กรุณาตรวจสอบชีท Sheet1 ว่ามีหัวคอลัมน์ Point และ Coordinates แล้วหรือไม่</p>
+          <p>กรุณาตรวจสอบว่ามีหัวคอลัมน์ Point และ Coordinates แล้วหรือไม่</p>
         </div>
 
       </main>
@@ -256,7 +256,7 @@
               <div class="form-group">
                 <label for="workDateInput">วันที่รอบงาน</label>
                 <input id="workDateInput" type="date" required />
-                <small>ใช้เป็นวันที่หลักสำหรับสรุปรายงาน แม้ตรวจหลังเที่ยงคืน</small>
+                <small>ใช้เป็นวันที่หลัก</small>
               </div>
 
               <div class="form-group">
@@ -269,7 +269,7 @@
                   <option value="DH">กะ DH</option>
                   <option value="NH">กะ NH</option>
                 </select>
-                <small>กะ C และ NH เป็นกะข้ามวัน ระบบจะยึดวันที่รอบงาน</small>
+                <small>กะ C และ NH ระบบจะยึดวันที่รอบงาน</small>
               </div>
 
             </div>
@@ -278,7 +278,6 @@
               <strong>หมายเหตุสำหรับกะข้ามวัน</strong>
               <span>
                 หากบันทึกหลังเที่ยงคืน ระบบจะยังใช้ “วันที่รอบงาน” ที่เลือกไว้
-                เพื่อให้สรุปผลไม่หลุดไปอยู่วันถัดไป
               </span>
             </div>
 
@@ -300,7 +299,7 @@
                 <input
                   id="inspectionInspectorView"
                   type="text"
-                  placeholder="ระบบจะใส่จากชื่อผู้เข้าสู่ระบบ"
+                  placeholder="ชื่อผู้เข้าสู่ระบบ"
                   readonly
                 />
                 <small>ใช้เป็นตัวกรองร่วมกับวันที่รอบงานและกะทำงาน</small>

@@ -9,6 +9,9 @@
  * - การ์ดจุดเสี่ยงแสดงข้อมูลตรวจล่าสุด
  * - บันทึกภาพ 2 ภาพ
  * - รองรับ Summary Report
+ * - เพิ่มระบบเลือกกะทำงาน A, B, C, DH, NH
+ * - Summary กรองด้วย วันที่รอบงาน + ผู้ตรวจที่ Login + กะทำงาน
+ * - กะ C และ NH รองรับงานข้ามวันโดยยึดวันที่รอบงาน
  ************************************************************/
 
 const API_BASE = window.APP_CONFIG.API_BASE;
@@ -18,8 +21,18 @@ const IMAGE_QUALITY = Math.min(Number(window.APP_CONFIG.IMAGE_QUALITY || 0.65), 
 
 const STORAGE_KEYS = window.APP_CONFIG.STORAGE_KEYS || {
   INSPECTOR: 'riskpoint_inspector',
-  LOGIN_TIME: 'riskpoint_login_time'
+  LOGIN_TIME: 'riskpoint_login_time',
+  WORK_SHIFT: 'riskpoint_work_shift',
+  WORK_DATE: 'riskpoint_work_date'
 };
+
+const WORK_SHIFTS = Array.isArray(window.APP_CONFIG.WORK_SHIFTS)
+  ? window.APP_CONFIG.WORK_SHIFTS
+  : ['A', 'B', 'C', 'DH', 'NH'];
+
+const CROSS_DAY_SHIFTS = Array.isArray(window.APP_CONFIG.CROSS_DAY_SHIFTS)
+  ? window.APP_CONFIG.CROSS_DAY_SHIFTS
+  : ['C', 'NH'];
 
 const STATE = {
   inspector: '',
@@ -34,7 +47,12 @@ const STATE = {
   currentFacingMode: 'environment',
   summaryData: null,
   activeSummaryDate: '',
-  currentGps: null
+  activeSummaryFilters: {
+    inspector: '',
+    workShift: ''
+  },
+  currentGps: null,
+  workShift: ''
 };
 
 /************************************************************
@@ -72,6 +90,10 @@ function bindEvents() {
   $('#openSummaryBtn')?.addEventListener('click', openSummaryPicker);
   $('#showSummaryBtn')?.addEventListener('click', handleShowSummary);
 
+  $('#workShiftSelect')?.addEventListener('change', handleWorkShiftChange);
+  $('#summaryShiftSelect')?.addEventListener('change', handleSummaryShiftChange);
+  $('#workDateInput')?.addEventListener('change', handleWorkDateChange);
+
   bindCameraBoxes();
 
   $('#photoInput1')?.addEventListener('change', e => handlePhotoFileChange(e, 1));
@@ -80,9 +102,17 @@ function bindEvents() {
 
 function setDefaultDates() {
   const today = toInputDate(new Date());
+  const savedWorkDate = localStorage.getItem(STORAGE_KEYS.WORK_DATE) || '';
+  const savedShift = localStorage.getItem(STORAGE_KEYS.WORK_SHIFT) || '';
 
   if ($('#summaryDateInput')) $('#summaryDateInput').value = today;
-  if ($('#workDateInput')) $('#workDateInput').value = today;
+  if ($('#workDateInput')) $('#workDateInput').value = savedWorkDate || today;
+
+  if ($('#workShiftSelect')) $('#workShiftSelect').value = WORK_SHIFTS.includes(savedShift) ? savedShift : '';
+  if ($('#summaryShiftSelect')) $('#summaryShiftSelect').value = WORK_SHIFTS.includes(savedShift) ? savedShift : '';
+
+  STATE.workShift = WORK_SHIFTS.includes(savedShift) ? savedShift : '';
+  updateShiftHint();
 }
 
 function restoreLogin() {
@@ -191,6 +221,7 @@ async function handleLogin(e) {
     localStorage.setItem(STORAGE_KEYS.LOGIN_TIME, new Date().toISOString());
 
     updateInspectorUI();
+    syncSummaryFiltersFromLogin();
 
     await Swal.fire({
       icon: 'success',
@@ -257,6 +288,22 @@ function logout() {
 function updateInspectorUI() {
   setText('welcomeText', `ผู้ตรวจ: ${STATE.inspector}`);
   setText('inspectionInspectorText', `ผู้ตรวจ: ${STATE.inspector}`);
+
+  const summaryInspectorInput = $('#summaryInspectorInput');
+  if (summaryInspectorInput) summaryInspectorInput.value = STATE.inspector || '';
+
+  const inspectionInspectorView = $('#inspectionInspectorView');
+  if (inspectionInspectorView) inspectionInspectorView.value = STATE.inspector || '';
+}
+
+function syncSummaryFiltersFromLogin() {
+  const summaryInspectorInput = $('#summaryInspectorInput');
+  if (summaryInspectorInput) summaryInspectorInput.value = STATE.inspector || '';
+
+  const savedShift = localStorage.getItem(STORAGE_KEYS.WORK_SHIFT) || '';
+  if ($('#summaryShiftSelect') && WORK_SHIFTS.includes(savedShift)) {
+    $('#summaryShiftSelect').value = savedShift;
+  }
 }
 
 /************************************************************
@@ -295,7 +342,8 @@ function handleSearchPoint() {
         String(item.point || '').toLowerCase().includes(keyword) ||
         String(item.coordinates || '').toLowerCase().includes(keyword) ||
         String(latest.inspector || '').toLowerCase().includes(keyword) ||
-        String(latest.status || '').toLowerCase().includes(keyword)
+        String(latest.status || '').toLowerCase().includes(keyword) ||
+        String(latest.workShift || '').toLowerCase().includes(keyword)
       );
     });
   }
@@ -327,7 +375,7 @@ function renderPointCards() {
         <div class="latest-inspection-box ${latest.status === 'ผิดปกติ' ? 'latest-bad' : 'latest-good'}">
           <span>ตรวจล่าสุด</span>
           <strong>${escapeHtml(latest.timestamp)}</strong>
-          <small>${escapeHtml(latest.inspector || '-')} | ${escapeHtml(latest.status || '-')}</small>
+          <small>${escapeHtml(latest.inspector || '-')} | กะ ${escapeHtml(latest.workShift || '-')} | ${escapeHtml(latest.status || '-')}</small>
         </div>
       `
       : `
@@ -412,6 +460,88 @@ function openInspection(point) {
   setTimeout(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, 80);
+}
+
+function handleWorkShiftChange() {
+  const shift = $('#workShiftSelect')?.value || '';
+
+  STATE.workShift = shift;
+
+  if (shift) {
+    localStorage.setItem(STORAGE_KEYS.WORK_SHIFT, shift);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.WORK_SHIFT);
+  }
+
+  if ($('#summaryShiftSelect') && shift) {
+    $('#summaryShiftSelect').value = shift;
+  }
+
+  applyCrossDayWorkDateSuggestion(shift);
+  updateShiftHint();
+}
+
+function handleSummaryShiftChange() {
+  const shift = $('#summaryShiftSelect')?.value || '';
+
+  if (shift) {
+    localStorage.setItem(STORAGE_KEYS.WORK_SHIFT, shift);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.WORK_SHIFT);
+  }
+
+  if ($('#workShiftSelect') && shift) {
+    $('#workShiftSelect').value = shift;
+    STATE.workShift = shift;
+    applyCrossDayWorkDateSuggestion(shift);
+    updateShiftHint();
+  }
+}
+
+function handleWorkDateChange() {
+  const value = $('#workDateInput')?.value || '';
+
+  if (value) {
+    localStorage.setItem(STORAGE_KEYS.WORK_DATE, value);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.WORK_DATE);
+  }
+}
+
+function applyCrossDayWorkDateSuggestion(shift) {
+  if (!CROSS_DAY_SHIFTS.includes(shift)) return;
+
+  const workDateInput = $('#workDateInput');
+  if (!workDateInput) return;
+
+  const now = new Date();
+  const hour = now.getHours();
+
+  if (hour >= 0 && hour < 8) {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const suggestedDate = toInputDate(yesterday);
+    const currentValue = workDateInput.value || '';
+
+    if (!currentValue || currentValue === toInputDate(now)) {
+      workDateInput.value = suggestedDate;
+      localStorage.setItem(STORAGE_KEYS.WORK_DATE, suggestedDate);
+    }
+  }
+}
+
+function updateShiftHint() {
+  const shift = $('#workShiftSelect')?.value || '';
+  const hintBox = $('#shiftHintBox');
+
+  if (!hintBox) return;
+
+  if (CROSS_DAY_SHIFTS.includes(shift)) {
+    hintBox.classList.remove('hidden');
+  } else {
+    hintBox.classList.add('hidden');
+  }
 }
 
 function handleStatusChange() {
@@ -832,6 +962,7 @@ async function handleSaveInspection(e) {
         <strong>${escapeHtml(payload.point)}</strong>
         <p>สถานะพื้นที่: ${escapeHtml(payload.status)}</p>
         <p>วันที่รอบงาน: ${escapeHtml(payload.workDate)}</p>
+        <p>กะทำงาน: ${escapeHtml(payload.workShift)}</p>
         <p>ภาพยืนยัน: ครบ 2 ภาพ</p>
         <p>GPS: ${escapeHtml(payload.gps.latitude)}, ${escapeHtml(payload.gps.longitude)}</p>
         <p>ความแม่นยำ: ${escapeHtml(payload.gps.accuracy || '-')} เมตร</p>
@@ -860,6 +991,8 @@ async function handleSaveInspection(e) {
           <p><b>จุดเสี่ยง:</b> ${escapeHtml(data.point)}</p>
           <p><b>ผู้ตรวจ:</b> ${escapeHtml(data.inspector)}</p>
           <p><b>เวลา:</b> ${escapeHtml(data.timestamp)}</p>
+          <p><b>วันที่รอบงาน:</b> ${escapeHtml(data.workDate || payload.workDate)}</p>
+          <p><b>กะทำงาน:</b> ${escapeHtml(data.workShift || payload.workShift)}</p>
           <p><b>สถานะ:</b> ${escapeHtml(data.status)}</p>
           <p><b>GPS:</b> ${escapeHtml(payload.gps.latitude)}, ${escapeHtml(payload.gps.longitude)}</p>
         </div>
@@ -887,6 +1020,7 @@ function buildInspectionPayload() {
     point: STATE.selectedPoint?.point || '',
     coordinates: STATE.selectedPoint?.coordinates || '',
     workDate: inputDateToThai($('#workDateInput')?.value || ''),
+    workShift: $('#workShiftSelect')?.value.trim() || '',
     status,
     abnormalDetail: $('#abnormalDetailInput')?.value.trim() || '',
     riskLevel: $('#riskLevelSelect')?.value.trim() || '',
@@ -903,6 +1037,8 @@ function validateInspectionPayload(payload, options = {}) {
   if (!payload.inspector) return { ok: false, message: 'ไม่พบชื่อผู้ตรวจ กรุณาเข้าสู่ระบบใหม่' };
   if (!payload.point) return { ok: false, message: 'ไม่พบจุดเสี่ยงที่เลือก' };
   if (!payload.workDate) return { ok: false, message: 'กรุณาเลือกวันที่รอบงาน' };
+  if (!payload.workShift) return { ok: false, message: 'กรุณาเลือกกะทำงาน' };
+  if (!WORK_SHIFTS.includes(payload.workShift)) return { ok: false, message: 'กะทำงานไม่ถูกต้อง' };
   if (!payload.status) return { ok: false, message: 'กรุณาเลือกสถานะพื้นที่' };
 
   if (payload.status === 'ผิดปกติ') {
@@ -924,7 +1060,20 @@ function resetInspectionForm(clearPoint = true) {
   $('#inspectionForm')?.reset();
 
   const today = toInputDate(new Date());
-  if ($('#workDateInput')) $('#workDateInput').value = today;
+  const savedShift = localStorage.getItem(STORAGE_KEYS.WORK_SHIFT) || '';
+  const savedWorkDate = localStorage.getItem(STORAGE_KEYS.WORK_DATE) || '';
+
+  if ($('#workDateInput')) $('#workDateInput').value = savedWorkDate || today;
+
+  if ($('#workShiftSelect')) {
+    $('#workShiftSelect').value = WORK_SHIFTS.includes(savedShift) ? savedShift : '';
+    STATE.workShift = $('#workShiftSelect').value || '';
+  }
+
+  const inspectionInspectorView = $('#inspectionInspectorView');
+  if (inspectionInspectorView) inspectionInspectorView.value = STATE.inspector || '';
+
+  updateShiftHint();
 
   STATE.images[1] = null;
   STATE.images[2] = null;
@@ -963,14 +1112,33 @@ function resetPhotoPreview(index) {
 
 function openSummaryPicker() {
   const date = $('#summaryDateInput')?.value || toInputDate(new Date());
+  const currentShift = $('#summaryShiftSelect')?.value || localStorage.getItem(STORAGE_KEYS.WORK_SHIFT) || '';
+  const inspector = STATE.inspector || '';
 
   Swal.fire({
-    title: 'เลือกวันที่สรุปผลตรวจ',
+    title: 'เลือกเงื่อนไขสรุปผลตรวจ',
     html: `
       <div class="summary-picker-box">
         <img src="${LOGO_URL}" class="summary-picker-logo" alt="logo">
-        <p>ระบบจะแสดงข้อมูลก่อนหน้า 1 วัน / วันที่เลือก / ถัดไป 1 วัน</p>
+        <p>ระบบจะกรองจากวันที่รอบงาน ผู้ตรวจที่เข้าสู่ระบบ และกะทำงาน</p>
+
+        <label class="swal-field-label">วันที่รอบงาน</label>
         <input id="swalSummaryDate" type="date" class="swal-date-input" value="${escapeAttr(date)}">
+
+        <label class="swal-field-label">ผู้ตรวจ</label>
+        <input id="swalSummaryInspector" type="text" class="swal-date-input" value="${escapeAttr(inspector)}" readonly>
+
+        <label class="swal-field-label">กะทำงาน</label>
+        <select id="swalSummaryShift" class="swal-date-input">
+          <option value="">ทุกกะ</option>
+          ${WORK_SHIFTS.map(shift => `
+            <option value="${escapeAttr(shift)}" ${currentShift === shift ? 'selected' : ''}>กะ ${escapeHtml(shift)}</option>
+          `).join('')}
+        </select>
+
+        <small class="summary-picker-note">
+          กะ C และ NH เป็นกะข้ามวัน ให้เลือกวันที่รอบงานจริงของกะนั้น
+        </small>
       </div>
     `,
     showCancelButton: true,
@@ -979,17 +1147,29 @@ function openSummaryPicker() {
     customClass: getSwalClass(),
     preConfirm: () => {
       const value = document.getElementById('swalSummaryDate').value;
+      const shift = document.getElementById('swalSummaryShift').value;
+
       if (!value) {
         Swal.showValidationMessage('กรุณาเลือกวันที่');
         return false;
       }
-      return value;
+
+      return {
+        date: value,
+        workShift: shift
+      };
     }
   }).then(result => {
-    if (result.isConfirmed) {
-      if ($('#summaryDateInput')) $('#summaryDateInput').value = result.value;
-      loadSummary(result.value);
+    if (!result.isConfirmed) return;
+
+    if ($('#summaryDateInput')) $('#summaryDateInput').value = result.value.date;
+    if ($('#summaryShiftSelect')) $('#summaryShiftSelect').value = result.value.workShift || '';
+
+    if (result.value.workShift) {
+      localStorage.setItem(STORAGE_KEYS.WORK_SHIFT, result.value.workShift);
     }
+
+    loadSummary(result.value.date);
   });
 }
 
@@ -1009,7 +1189,21 @@ async function loadSummary(inputDate) {
 
   try {
     const dateText = inputDate.includes('-') ? inputDate : thaiDateToInput(inputDate);
-    const data = await apiGet(`/api/summary?date=${encodeURIComponent(dateText)}`, 60000);
+    const inspector = STATE.inspector || '';
+    const workShift = $('#summaryShiftSelect')?.value || '';
+
+    STATE.activeSummaryFilters = {
+      inspector,
+      workShift
+    };
+
+    const query = new URLSearchParams({
+      date: dateText,
+      inspector,
+      workShift
+    });
+
+    const data = await apiGet(`/api/summary?${query.toString()}`, 60000);
 
     STATE.summaryData = data;
     STATE.activeSummaryDate = data.selectedDate;
@@ -1054,6 +1248,8 @@ function renderSummaryPopup(data, activeDate) {
 
 function buildSummaryHtml(data, day) {
   const inspectorsText = day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-';
+  const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
+  const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
 
   const tabs = data.days.map(d => {
     const active = d.date === day.date ? 'active' : '';
@@ -1070,7 +1266,7 @@ function buildSummaryHtml(data, day) {
     : `
       <div class="summary-empty">
         <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
-        <p>หากเพิ่งบันทึก กรุณาตรวจสอบวันที่รอบงาน หรือกดวันที่ก่อนหน้า/ถัดไป</p>
+        <p>หากเพิ่งบันทึก กรุณาตรวจสอบวันที่รอบงาน ผู้ตรวจ หรือกะทำงาน</p>
       </div>
     `;
 
@@ -1102,8 +1298,9 @@ function buildSummaryHtml(data, day) {
       </div>
 
       <div class="risk-report-inspectors">
-        <span>ผู้ตรวจ</span>
-        <strong>${escapeHtml(inspectorsText)}</strong>
+        <span>ตัวกรองรายงาน</span>
+        <strong>ผู้ตรวจ: ${escapeHtml(filterInspector)} | กะ: ${escapeHtml(filterShift)}</strong>
+        <small>พบผู้ตรวจในข้อมูล: ${escapeHtml(inspectorsText)}</small>
       </div>
 
       <div class="summary-tabs">
@@ -1123,18 +1320,18 @@ function buildSummaryItemCard(item) {
 
   const imageUrl = buildSummaryImageUrl(item);
 
-const imageHtml = imageUrl
-  ? `
-    <img
-      src="${escapeAttr(imageUrl)}"
-      alt="ภาพแรก"
-      loading="lazy"
-      referrerpolicy="no-referrer"
-      onerror="this.onerror=null;this.src='${escapeAttr(buildDriveFallbackImageUrl(item.image1FileId))}';"
-    >
-  `
-  : `<div class="no-image">ไม่มีภาพ</div>`;
-  
+  const imageHtml = imageUrl
+    ? `
+      <img
+        src="${escapeAttr(imageUrl)}"
+        alt="ภาพแรก"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        onerror="this.onerror=null;this.src='${escapeAttr(buildDriveFallbackImageUrl(item.image1FileId))}';"
+      >
+    `
+    : `<div class="no-image">ไม่มีภาพ</div>`;
+
   const mapHtml = mapUrl
     ? `<iframe src="${escapeAttr(mapUrl)}" loading="lazy"></iframe>`
     : `<div class="no-image">ไม่มีแผนที่</div>`;
@@ -1144,7 +1341,7 @@ const imageHtml = imageUrl
       <div class="summary-item-main">
         <div>
           <h3>${escapeHtml(item.point)}</h3>
-          <p>${escapeHtml(item.inspector)} | ${escapeHtml(item.time || '-')}</p>
+          <p>${escapeHtml(item.inspector)} | กะ ${escapeHtml(item.workShift || '-')} | ${escapeHtml(item.time || '-')}</p>
         </div>
 
         <span class="status-pill ${isAbnormal ? 'bad' : 'good'}">
@@ -1188,12 +1385,14 @@ async function copySummaryText(day) {
   text += `ตรวจทั้งหมด ${day.total} จุด\n`;
   text += `ปกติ ${day.normal} จุด\n`;
   text += `ผิดปกติ ${day.abnormal} จุด\n`;
-  text += `ผู้ตรวจ: ${day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-'}\n`;
+  text += `ตัวกรองผู้ตรวจ: ${STATE.activeSummaryFilters.inspector || STATE.inspector || '-'}\n`;
+  text += `ตัวกรองกะ: ${STATE.activeSummaryFilters.workShift || 'ทุกกะ'}\n`;
+  text += `ผู้ตรวจในข้อมูล: ${day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-'}\n`;
 
   if (abnormalItems.length) {
     text += `\nรายการผิดปกติ:\n`;
     abnormalItems.forEach((item, i) => {
-      text += `${i + 1}. ${item.point} - ${item.abnormalDetail || '-'} - ระดับ ${item.riskLevel || '-'}\n`;
+      text += `${i + 1}. ${item.point} - กะ ${item.workShift || '-'} - ${item.abnormalDetail || '-'} - ระดับ ${item.riskLevel || '-'}\n`;
     });
   } else {
     text += `\nไม่พบรายการผิดปกติ\n`;
@@ -1219,7 +1418,6 @@ async function copySummaryText(day) {
     });
   }
 }
-
 
 /************************************************************
  * GPS
@@ -1653,6 +1851,61 @@ function injectDynamicStyles() {
       color: #0f3d66;
     }
 
+    .shift-hint-box {
+      display: grid;
+      gap: 4px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      background: var(--warning-soft, #fef3c7);
+      border: 1px solid rgba(180, 83, 9, 0.22);
+      color: #78350f;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .shift-hint-box strong {
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
+      color: #92400e;
+    }
+
+    .summary-filter-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+
+    .summary-filter-item small,
+    .summary-picker-note {
+      display: block;
+      margin-top: 5px;
+      color: var(--text-muted, #64748b);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .full-inline-btn {
+      width: 100%;
+    }
+
+    .swal-field-label {
+      display: block;
+      margin: 10px 0 5px;
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
+      font-weight: 800;
+      font-size: 13px;
+      color: var(--primary, #0f3d66);
+      text-align: left;
+    }
+
+    .risk-report-inspectors small {
+      display: block;
+      margin-top: 3px;
+      color: var(--text-muted, #64748b);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
     @media (max-width: 560px) {
       .camera-video-wrap {
         height: 58vh;
@@ -1674,6 +1927,18 @@ function injectDynamicStyles() {
       .latest-inspection-box strong {
         font-size: 13px;
       }
+
+      .summary-filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .summary-filter-action {
+        grid-column: 1 / -1;
+      }
+
+      .work-round-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
   `;
 
@@ -1683,6 +1948,7 @@ function injectDynamicStyles() {
 /************************************************************
  * Selector
  ************************************************************/
+
 function buildSummaryImageUrl(item) {
   const fileId = String(item.image1FileId || '').trim();
 
@@ -1720,6 +1986,7 @@ function extractDriveFileIdFromUrl(url) {
 
   return '';
 }
+
 function $(selector) {
   return document.querySelector(selector);
 }

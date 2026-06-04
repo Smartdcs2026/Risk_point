@@ -1377,25 +1377,341 @@ function bindSummaryTabs(data) {
   });
 }
 
+/************************************************************
+ * Summary Popup - Mobile Capture Complete Version
+ * แสดงข้อมูลครบสำหรับแคปภาพ และ Copy ข้อความทั้งหมด
+ ************************************************************/
+
+function renderSummaryPopup(data, activeDate) {
+  const day = data.days.find(d => d.date === activeDate) || data.days[1] || data.days[0];
+
+  injectSummaryCaptureStyles();
+
+  const html = buildSummaryHtml(data, day);
+
+  Swal.fire({
+    title: '',
+    html,
+    width: '96%',
+    showConfirmButton: true,
+    showDenyButton: true,
+    showCancelButton: true,
+    confirmButtonText: 'ปิด',
+    denyButtonText: 'คัดลอกข้อความทั้งหมด',
+    cancelButtonText: 'โหมดแคปภาพ',
+    customClass: {
+      popup: 'risk-report-popup risk-report-popup-complete',
+      htmlContainer: 'risk-report-html',
+      confirmButton: 'risk-report-confirm',
+      denyButton: 'risk-report-copy',
+      cancelButton: 'risk-report-capture-btn'
+    },
+    didOpen: () => {
+      bindSummaryTabs(data);
+    }
+  }).then(async result => {
+    if (result.isDenied) {
+      await copySummaryText(day);
+      return;
+    }
+
+    if (result.dismiss === Swal.DismissReason.cancel) {
+      openSummaryCaptureView(data, day);
+    }
+  });
+}
+
+
+function buildSummaryHtml(data, day) {
+  const items = Array.isArray(day.items) ? day.items : [];
+  const inspectorsText = day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-';
+  const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
+  const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
+
+  const tabs = data.days.map(d => {
+    const active = d.date === day.date ? 'active' : '';
+
+    return `
+      <button type="button" class="summary-tab ${active}" data-date="${escapeAttr(d.date)}">
+        ${escapeHtml(d.date)}
+        <span>${Number(d.total || 0)}</span>
+      </button>
+    `;
+  }).join('');
+
+  const itemsHtml = items.length
+    ? items.map((item, index) => buildSummaryItemCard(item, index)).join('')
+    : `
+      <div class="summary-empty">
+        <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
+        <p>กรุณาตรวจสอบวันที่รอบงาน ผู้ตรวจ หรือกะทำงาน</p>
+      </div>
+    `;
+
+  return `
+    <div class="risk-report-capture" id="riskReportCaptureArea">
+
+      <div class="risk-report-header">
+        <img src="${LOGO_URL}" alt="logo">
+        <div>
+          <h2>สรุปผลตรวจจุดเสี่ยง</h2>
+          <p>วันที่รอบงาน ${escapeHtml(day.date || '-')}</p>
+        </div>
+      </div>
+
+      <div class="risk-report-stats">
+        <div>
+          <span>ตรวจทั้งหมด</span>
+          <strong>${Number(day.total || 0)}</strong>
+        </div>
+
+        <div>
+          <span>ปกติ</span>
+          <strong>${Number(day.normal || 0)}</strong>
+        </div>
+
+        <div class="${Number(day.abnormal || 0) > 0 ? 'danger' : ''}">
+          <span>ผิดปกติ</span>
+          <strong>${Number(day.abnormal || 0)}</strong>
+        </div>
+      </div>
+
+      <div class="risk-report-inspectors">
+        <span>ตัวกรองรายงาน</span>
+        <strong>ผู้ตรวจ: ${escapeHtml(filterInspector)} | กะ: ${escapeHtml(filterShift)}</strong>
+        <small>ผู้ตรวจในข้อมูล: ${escapeHtml(inspectorsText)}</small>
+      </div>
+
+      <div class="summary-capture-note">
+        <strong>สำหรับแคปหน้าจอ:</strong>
+        <span>ข้อมูลแต่ละจุดจะแสดงชื่อจุด วันที่ เวลา ผู้ตรวจ กะ ผลตรวจ รายละเอียด ภาพ และแผนที่</span>
+      </div>
+
+      <div class="summary-tabs">
+        ${tabs}
+      </div>
+
+      <div class="summary-items summary-items-complete">
+        ${itemsHtml}
+      </div>
+
+    </div>
+  `;
+}
+
+
+function buildSummaryItemCard(item, index) {
+  const isAbnormal = item.status === 'ผิดปกติ';
+
+  const point = item.point || '-';
+  const date = item.date || item.workDate || '';
+  const time = item.time || extractTimeFromTimestamp(item.timestamp) || '-';
+  const inspector = item.inspector || '-';
+  const workShift = item.workShift || '-';
+  const status = item.status || '-';
+  const coordinates = item.coordinates || '-';
+  const abnormalDetail = item.abnormalDetail || '';
+  const riskLevel = item.riskLevel || '';
+  const correctiveAction = item.correctiveAction || '';
+  const distanceMeters = item.distanceMeters || '';
+  const gpsAccuracy = item.gpsAccuracy || '';
+  const mapUrl = item.mapUrl || buildMapEmbedUrl(item.coordinates, 20);
+
+  const image1Url = buildSummaryImageUrlBySlot(item, 1);
+  const image2Url = buildSummaryImageUrlBySlot(item, 2);
+
+  const image1Html = buildSummaryImageBox({
+    title: 'ภาพตรวจ 1',
+    url: image1Url,
+    fallbackFileId: item.image1FileId
+  });
+
+  const image2Html = buildSummaryImageBox({
+    title: 'ภาพตรวจ 2',
+    url: image2Url,
+    fallbackFileId: item.image2FileId
+  });
+
+  const mapHtml = mapUrl
+    ? `
+      <div class="summary-media-box">
+        <div class="summary-media-title">แผนที่</div>
+        <iframe src="${escapeAttr(mapUrl)}" loading="lazy"></iframe>
+      </div>
+    `
+    : `
+      <div class="summary-media-box summary-media-empty">
+        <div class="summary-media-title">แผนที่</div>
+        <span>ไม่มีแผนที่</span>
+      </div>
+    `;
+
+  const abnormalHtml = isAbnormal
+    ? `
+      <div class="summary-abnormal-detail summary-abnormal-complete">
+        <div>
+          <b>รายละเอียดผิดปกติ:</b>
+          <span>${escapeHtml(abnormalDetail || '-')}</span>
+        </div>
+
+        <div class="summary-detail-grid">
+          <span><b>ระดับ:</b> ${escapeHtml(riskLevel || '-')}</span>
+          <span><b>การแก้ไข:</b> ${escapeHtml(correctiveAction || '-')}</span>
+        </div>
+      </div>
+    `
+    : `
+      <div class="summary-normal-detail">
+        ผลตรวจปกติ ไม่พบความผิดปกติจากการตรวจรอบนี้
+      </div>
+    `;
+
+  const gpsHtml = `
+    <div class="summary-gps-line">
+      <span><b>พิกัด:</b> ${escapeHtml(coordinates)}</span>
+      ${distanceMeters ? `<span><b>ระยะห่าง:</b> ${escapeHtml(distanceMeters)} ม.</span>` : ''}
+      ${gpsAccuracy ? `<span><b>GPS:</b> ±${escapeHtml(gpsAccuracy)} ม.</span>` : ''}
+    </div>
+  `;
+
+  return `
+    <article class="summary-item-card summary-item-complete ${isAbnormal ? 'abnormal' : 'normal'}">
+
+      <div class="summary-item-main">
+        <div>
+          <div class="summary-item-title-row">
+            <span class="summary-item-index">${index + 1}</span>
+            <h3>${escapeHtml(point)}</h3>
+          </div>
+
+          <p>
+            วันที่: ${escapeHtml(date || '-')} |
+            เวลา: ${escapeHtml(time)} |
+            กะ: ${escapeHtml(workShift)}
+          </p>
+
+          <p>
+            ผู้ตรวจ: ${escapeHtml(inspector)}
+          </p>
+        </div>
+
+        <span class="status-pill ${isAbnormal ? 'bad' : 'good'}">
+          ${escapeHtml(status)}
+        </span>
+      </div>
+
+      ${abnormalHtml}
+
+      ${gpsHtml}
+
+      <div class="summary-media-row summary-media-row-complete">
+        ${image1Html}
+        ${image2Html}
+        ${mapHtml}
+      </div>
+
+    </article>
+  `;
+}
+
+
+function buildSummaryImageBox({ title, url, fallbackFileId }) {
+  if (!url) {
+    return `
+      <div class="summary-media-box summary-media-empty">
+        <div class="summary-media-title">${escapeHtml(title)}</div>
+        <span>ไม่มีภาพ</span>
+      </div>
+    `;
+  }
+
+  const fallback = fallbackFileId ? buildDriveFallbackImageUrl(fallbackFileId) : '';
+
+  return `
+    <div class="summary-media-box">
+      <div class="summary-media-title">${escapeHtml(title)}</div>
+      <img
+        src="${escapeAttr(url)}"
+        alt="${escapeAttr(title)}"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        onerror="this.onerror=null;${fallback ? `this.src='${escapeAttr(fallback)}';` : `this.parentElement.classList.add('summary-media-empty');this.remove();`}"
+      >
+    </div>
+  `;
+}
+
+
+function bindSummaryTabs(data) {
+  document.querySelectorAll('.summary-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const date = btn.dataset.date;
+      Swal.close();
+
+      setTimeout(() => {
+        renderSummaryPopup(data, date);
+      }, 100);
+    });
+  });
+}
+
+
 async function copySummaryText(day) {
-  const abnormalItems = (day.items || []).filter(x => x.status === 'ผิดปกติ');
+  const items = Array.isArray(day.items) ? day.items : [];
+  const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
+  const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
+  const inspectorsText = day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-';
 
   let text = '';
-  text += `สรุปผลตรวจจุดเสี่ยง ${day.date}\n`;
-  text += `ตรวจทั้งหมด ${day.total} จุด\n`;
-  text += `ปกติ ${day.normal} จุด\n`;
-  text += `ผิดปกติ ${day.abnormal} จุด\n`;
-  text += `ตัวกรองผู้ตรวจ: ${STATE.activeSummaryFilters.inspector || STATE.inspector || '-'}\n`;
-  text += `ตัวกรองกะ: ${STATE.activeSummaryFilters.workShift || 'ทุกกะ'}\n`;
-  text += `ผู้ตรวจในข้อมูล: ${day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-'}\n`;
+  text += `สรุปผลตรวจจุดเสี่ยง\n`;
+  text += `วันที่รอบงาน: ${day.date || '-'}\n`;
+  text += `ผู้ตรวจที่กรอง: ${filterInspector}\n`;
+  text += `กะทำงานที่กรอง: ${filterShift}\n`;
+  text += `ผู้ตรวจในข้อมูล: ${inspectorsText}\n`;
+  text += `ตรวจทั้งหมด: ${Number(day.total || 0)} จุด\n`;
+  text += `ปกติ: ${Number(day.normal || 0)} จุด\n`;
+  text += `ผิดปกติ: ${Number(day.abnormal || 0)} จุด\n`;
 
-  if (abnormalItems.length) {
-    text += `\nรายการผิดปกติ:\n`;
-    abnormalItems.forEach((item, i) => {
-      text += `${i + 1}. ${item.point} - กะ ${item.workShift || '-'} - ${item.abnormalDetail || '-'} - ระดับ ${item.riskLevel || '-'}\n`;
-    });
+  if (!items.length) {
+    text += `\nไม่พบข้อมูลการตรวจในเงื่อนไขนี้\n`;
   } else {
-    text += `\nไม่พบรายการผิดปกติ\n`;
+    text += `\nรายละเอียดทุกจุดตรวจ\n`;
+
+    items.forEach((item, index) => {
+      const isAbnormal = item.status === 'ผิดปกติ';
+
+      text += `\n${index + 1}. ${item.point || '-'}\n`;
+      text += `วันที่: ${item.date || item.workDate || day.date || '-'}\n`;
+      text += `เวลา: ${item.time || extractTimeFromTimestamp(item.timestamp) || '-'}\n`;
+      text += `ผู้ตรวจ: ${item.inspector || '-'}\n`;
+      text += `กะ: ${item.workShift || '-'}\n`;
+      text += `ผลตรวจ: ${item.status || '-'}\n`;
+      text += `พิกัด: ${item.coordinates || '-'}\n`;
+
+      if (item.distanceMeters) {
+        text += `ระยะห่างจากจุดเสี่ยง: ${item.distanceMeters} เมตร\n`;
+      }
+
+      if (item.gpsAccuracy) {
+        text += `ความแม่นยำ GPS: ±${item.gpsAccuracy} เมตร\n`;
+      }
+
+      if (isAbnormal) {
+        text += `รายละเอียดผิดปกติ: ${item.abnormalDetail || '-'}\n`;
+        text += `ระดับความเสี่ยง: ${item.riskLevel || '-'}\n`;
+        text += `แนวทางแก้ไข/ติดตาม: ${item.correctiveAction || '-'}\n`;
+      } else {
+        text += `รายละเอียด: ปกติ ไม่พบความผิดปกติ\n`;
+      }
+
+      const image1 = buildSummaryImageUrlBySlot(item, 1);
+      const image2 = buildSummaryImageUrlBySlot(item, 2);
+      const mapUrl = item.mapUrl || buildMapEmbedUrl(item.coordinates, 20);
+
+      text += `ภาพตรวจ 1: ${image1 || '-'}\n`;
+      text += `ภาพตรวจ 2: ${image2 || '-'}\n`;
+      text += `แผนที่: ${mapUrl || '-'}\n`;
+    });
   }
 
   try {
@@ -1403,8 +1719,9 @@ async function copySummaryText(day) {
 
     await Swal.fire({
       icon: 'success',
-      title: 'คัดลอกข้อความแล้ว',
-      timer: 1000,
+      title: 'คัดลอกข้อความทั้งหมดแล้ว',
+      text: 'รายละเอียดทุกจุดตรวจถูกคัดลอกเรียบร้อย',
+      timer: 1300,
       showConfirmButton: false,
       customClass: getSwalClass()
     });
@@ -1412,13 +1729,474 @@ async function copySummaryText(day) {
   } catch (err) {
     await Swal.fire({
       title: 'คัดลอกข้อความ',
-      text,
+      html: `
+        <textarea
+          style="width:100%;height:360px;border:1px solid #d9e5f2;border-radius:12px;padding:10px;font-family:monospace;font-size:12px;"
+          readonly
+        >${escapeHtml(text)}</textarea>
+      `,
       confirmButtonText: 'ปิด',
       customClass: getSwalClass()
     });
   }
 }
 
+
+/************************************************************
+ * Summary Capture View
+ * เปิดหน้า Popup แบบยาวสำหรับแคปหน้าจอ/Long Screenshot
+ ************************************************************/
+
+function openSummaryCaptureView(data, day) {
+  injectSummaryCaptureStyles();
+
+  const html = buildSummaryCaptureHtml(day);
+
+  Swal.fire({
+    title: '',
+    html,
+    width: '96%',
+    showConfirmButton: true,
+    showDenyButton: true,
+    confirmButtonText: 'ปิด',
+    denyButtonText: 'คัดลอกข้อความทั้งหมด',
+    customClass: {
+      popup: 'risk-report-popup risk-report-popup-complete capture-mode-popup',
+      htmlContainer: 'risk-report-html capture-mode-html',
+      confirmButton: 'risk-report-confirm',
+      denyButton: 'risk-report-copy'
+    }
+  }).then(async result => {
+    if (result.isDenied) {
+      await copySummaryText(day);
+    }
+  });
+}
+
+
+function buildSummaryCaptureHtml(day) {
+  const items = Array.isArray(day.items) ? day.items : [];
+  const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
+  const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
+
+  const itemsHtml = items.length
+    ? items.map((item, index) => buildSummaryItemCard(item, index)).join('')
+    : `
+      <div class="summary-empty">
+        <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
+      </div>
+    `;
+
+  return `
+    <div class="risk-report-capture capture-page" id="riskReportCapturePage">
+
+      <div class="capture-page-header">
+        <img src="${LOGO_URL}" alt="logo">
+        <div>
+          <h2>สรุปผลตรวจจุดเสี่ยง</h2>
+          <p>วันที่รอบงาน ${escapeHtml(day.date || '-')}</p>
+          <p>ผู้ตรวจ: ${escapeHtml(filterInspector)} | กะ: ${escapeHtml(filterShift)}</p>
+        </div>
+      </div>
+
+      <div class="capture-page-stats">
+        <div>ทั้งหมด <b>${Number(day.total || 0)}</b></div>
+        <div>ปกติ <b>${Number(day.normal || 0)}</b></div>
+        <div class="${Number(day.abnormal || 0) > 0 ? 'danger' : ''}">
+          ผิดปกติ <b>${Number(day.abnormal || 0)}</b>
+        </div>
+      </div>
+
+      <div class="capture-page-note">
+        ใช้หน้านี้สำหรับแคปหน้าจอหรือ Long Screenshot บนมือถือ เพื่อเก็บข้อมูล ภาพ แผนที่ และรายละเอียดทุกจุดในรายงานเดียว
+      </div>
+
+      <div class="summary-items summary-items-complete">
+        ${itemsHtml}
+      </div>
+
+    </div>
+  `;
+}
+
+
+/************************************************************
+ * Summary Image Helpers
+ ************************************************************/
+
+function buildSummaryImageUrlBySlot(item, slot) {
+  const fileId = String(item[`image${slot}FileId`] || '').trim();
+  const url = String(item[`image${slot}Url`] || '').trim();
+
+  if (fileId) {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1000`;
+  }
+
+  const extractedId = extractDriveFileIdFromUrl(url);
+  if (extractedId) {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(extractedId)}&sz=w1000`;
+  }
+
+  return url;
+}
+
+
+function extractTimeFromTimestamp(timestamp) {
+  const text = String(timestamp || '').trim();
+
+  if (!text) return '';
+
+  const match = text.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+  return match ? match[1] : '';
+}
+
+
+/************************************************************
+ * Summary Capture CSS
+ ************************************************************/
+
+function injectSummaryCaptureStyles() {
+  if (document.getElementById('riskSummaryCaptureStyles')) return;
+
+  const style = document.createElement('style');
+  style.id = 'riskSummaryCaptureStyles';
+
+  style.textContent = `
+    .risk-report-popup-complete {
+      width: min(96vw, 760px) !important;
+      border-radius: 22px !important;
+      overflow: hidden !important;
+    }
+
+    .risk-report-popup-complete .swal2-actions {
+      gap: 8px !important;
+      padding: 0 10px 12px !important;
+      margin-top: 8px !important;
+    }
+
+    .risk-report-capture {
+      max-height: min(78vh, 760px) !important;
+      overflow-y: auto !important;
+      padding: 12px !important;
+    }
+
+    .summary-capture-note {
+      display: grid;
+      gap: 2px;
+      margin: 8px 0;
+      padding: 8px 10px;
+      border-radius: 14px;
+      background: #f8fafc;
+      border: 1px dashed #d9e5f2;
+      color: #64748b;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .summary-capture-note strong {
+      color: #073b66;
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
+    }
+
+    .summary-items-complete {
+      display: grid !important;
+      gap: 9px !important;
+    }
+
+    .summary-item-complete {
+      padding: 10px !important;
+      border-radius: 16px !important;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    .summary-item-title-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .summary-item-index {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 8px;
+      background: #e8f2fc;
+      color: #073b66;
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .summary-item-complete .summary-item-main h3 {
+      margin: 0 !important;
+      font-size: 14px !important;
+      line-height: 1.25 !important;
+    }
+
+    .summary-item-complete .summary-item-main p {
+      margin: 2px 0 0 !important;
+      font-size: 11.5px !important;
+      line-height: 1.3 !important;
+    }
+
+    .summary-abnormal-complete {
+      display: grid;
+      gap: 5px;
+      margin-top: 7px !important;
+      padding: 7px 8px !important;
+      font-size: 11.5px !important;
+      line-height: 1.35 !important;
+    }
+
+    .summary-normal-detail {
+      margin-top: 7px;
+      padding: 7px 8px;
+      border-radius: 12px;
+      background: #dcfce7;
+      color: #15803d;
+      font-size: 11.5px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .summary-detail-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+
+    .summary-gps-line {
+      display: grid;
+      gap: 2px;
+      margin-top: 7px;
+      padding: 7px 8px;
+      border-radius: 12px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 11.3px;
+      line-height: 1.3;
+    }
+
+    .summary-media-row-complete {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 6px !important;
+      margin-top: 7px !important;
+    }
+
+    .summary-media-box {
+      position: relative;
+      height: 82px;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid #d9e5f2;
+      background: #f1f5f9;
+    }
+
+    .summary-media-box img,
+    .summary-media-box iframe {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border: 0;
+      display: block;
+    }
+
+    .summary-media-title {
+      position: absolute;
+      z-index: 2;
+      left: 5px;
+      top: 5px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.7);
+      color: #fff;
+      font-size: 9.5px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+
+    .summary-media-empty {
+      display: grid;
+      place-items: center;
+      color: #64748b;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .summary-media-empty .summary-media-title {
+      background: rgba(100, 116, 139, 0.7);
+    }
+
+    .capture-mode-popup {
+      width: min(96vw, 820px) !important;
+    }
+
+    .capture-mode-html {
+      overflow: hidden !important;
+    }
+
+    .capture-page {
+      max-height: 80vh !important;
+      overflow-y: auto !important;
+      background: #ffffff !important;
+    }
+
+    .capture-page-header {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #073b66, #0d5b93);
+      color: #fff;
+    }
+
+    .capture-page-header img {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
+      padding: 5px;
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .capture-page-header h2 {
+      margin: 0;
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .capture-page-header p {
+      margin: 2px 0 0;
+      font-size: 12px;
+      opacity: 0.94;
+    }
+
+    .capture-page-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin: 8px 0;
+    }
+
+    .capture-page-stats div {
+      padding: 7px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid #d9e5f2;
+      text-align: center;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .capture-page-stats b {
+      display: block;
+      color: #073b66;
+      font-size: 17px;
+      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
+    }
+
+    .capture-page-stats .danger b {
+      color: #b91c1c;
+    }
+
+    .capture-page-note {
+      margin-bottom: 8px;
+      padding: 7px 8px;
+      border-radius: 12px;
+      background: #fff7ed;
+      color: #9a3412;
+      font-size: 11.5px;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 560px) {
+      .risk-report-popup-complete {
+        width: calc(100% - 8px) !important;
+        border-radius: 18px !important;
+      }
+
+      .risk-report-capture {
+        padding: 8px !important;
+        max-height: 78vh !important;
+      }
+
+      .summary-media-row-complete {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 5px !important;
+      }
+
+      .summary-media-box {
+        height: 66px !important;
+        border-radius: 10px !important;
+      }
+
+      .summary-media-title {
+        font-size: 8.5px !important;
+        padding: 2px 5px !important;
+      }
+
+      .summary-item-complete {
+        padding: 7px !important;
+        border-radius: 13px !important;
+      }
+
+      .summary-item-title-row {
+        gap: 5px !important;
+      }
+
+      .summary-item-index {
+        width: 20px !important;
+        height: 20px !important;
+        font-size: 10px !important;
+      }
+
+      .summary-item-complete .summary-item-main {
+        grid-template-columns: minmax(0, 1fr) 56px !important;
+        gap: 5px !important;
+      }
+
+      .summary-item-complete .summary-item-main h3 {
+        font-size: 12.5px !important;
+      }
+
+      .summary-item-complete .summary-item-main p {
+        font-size: 10.5px !important;
+      }
+
+      .summary-abnormal-complete,
+      .summary-normal-detail,
+      .summary-gps-line {
+        padding: 6px !important;
+        font-size: 10.5px !important;
+        border-radius: 10px !important;
+      }
+
+      .summary-capture-note {
+        display: none !important;
+      }
+
+      .risk-report-popup-complete .swal2-actions {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+      }
+
+      .risk-report-popup-complete .swal2-actions button {
+        width: 100% !important;
+        margin: 0 !important;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
 /************************************************************
  * GPS
  ************************************************************/

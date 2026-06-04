@@ -1108,9 +1108,6 @@ function resetPhotoPreview(index) {
 
 /************************************************************
  * Summary
- * - หน้า Summary ปกติ: แสดง Map เหมือนเดิม
- * - โหมดบันทึกภาพ PNG: ตัด Map ออก และใช้ข้อมูลจุดตรวจแทน
- * - Copy ข้อความ: เอาลิงก์ภาพ/ลิงก์แผนที่ออก เหลือเฉพาะข้อมูล
  ************************************************************/
 
 function openSummaryPicker() {
@@ -1220,46 +1217,194 @@ async function loadSummary(inputDate) {
   }
 }
 
-function getSummaryDay(data, activeDate) {
-  const days = Array.isArray(data?.days) ? data.days : [];
-
-  return (
-    days.find(d => d.date === activeDate) ||
-    days.find(d => d.date === data?.selectedDate) ||
-    days[1] ||
-    days[0] ||
-    {
-      date: activeDate || '',
-      total: 0,
-      normal: 0,
-      abnormal: 0,
-      inspectors: [],
-      items: []
-    }
-  );
-}
-
 function renderSummaryPopup(data, activeDate) {
-  const day = getSummaryDay(data, activeDate);
+  const day = data.days.find(d => d.date === activeDate) || data.days[1] || data.days[0];
 
-  injectSummaryCaptureStyles();
+  const html = buildSummaryHtml(data, day);
 
   Swal.fire({
     title: '',
-    html: buildSummaryHtml(data, day),
+    html,
+    width: '96%',
+    showConfirmButton: true,
+    showDenyButton: true,
+    confirmButtonText: 'ปิด',
+    denyButtonText: 'คัดลอกสรุปข้อความ',
+    customClass: {
+      popup: 'risk-report-popup',
+      htmlContainer: 'risk-report-html',
+      confirmButton: 'risk-report-confirm',
+      denyButton: 'risk-report-copy'
+    },
+    didOpen: () => {
+      bindSummaryTabs(data);
+    }
+  }).then(async result => {
+    if (result.isDenied) {
+      await copySummaryText(day);
+    }
+  });
+}
+
+function buildSummaryHtml(data, day) {
+  const inspectorsText = day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-';
+  const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
+  const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
+
+  const tabs = data.days.map(d => {
+    const active = d.date === day.date ? 'active' : '';
+    return `
+      <button type="button" class="summary-tab ${active}" data-date="${escapeAttr(d.date)}">
+        ${escapeHtml(d.date)}
+        <span>${d.total}</span>
+      </button>
+    `;
+  }).join('');
+
+  const itemsHtml = day.items && day.items.length
+    ? day.items.map(buildSummaryItemCard).join('')
+    : `
+      <div class="summary-empty">
+        <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
+        <p>หากเพิ่งบันทึก กรุณาตรวจสอบวันที่รอบงาน ผู้ตรวจ หรือกะทำงาน</p>
+      </div>
+    `;
+
+  return `
+    <div class="risk-report-capture">
+      <div class="risk-report-header">
+        <img src="${LOGO_URL}" alt="logo">
+        <div>
+          <h2>สรุปผลตรวจจุดเสี่ยง</h2>
+          <p>วันที่ ${escapeHtml(day.date)}</p>
+        </div>
+      </div>
+
+      <div class="risk-report-stats">
+        <div>
+          <span>ตรวจทั้งหมด</span>
+          <strong>${day.total}</strong>
+        </div>
+
+        <div>
+          <span>ปกติ</span>
+          <strong>${day.normal}</strong>
+        </div>
+
+        <div class="${day.abnormal > 0 ? 'danger' : ''}">
+          <span>ผิดปกติ</span>
+          <strong>${day.abnormal}</strong>
+        </div>
+      </div>
+
+      <div class="risk-report-inspectors">
+        <span>ตัวกรองรายงาน</span>
+        <strong>ผู้ตรวจ: ${escapeHtml(filterInspector)} | กะ: ${escapeHtml(filterShift)}</strong>
+        <small>พบผู้ตรวจในข้อมูล: ${escapeHtml(inspectorsText)}</small>
+      </div>
+
+      <div class="summary-tabs">
+        ${tabs}
+      </div>
+
+      <div class="summary-items">
+        ${itemsHtml}
+      </div>
+    </div>
+  `;
+}
+
+function buildSummaryItemCard(item) {
+  const isAbnormal = item.status === 'ผิดปกติ';
+  const mapUrl = buildMapEmbedUrl(item.coordinates, 20);
+
+  const imageUrl = buildSummaryImageUrl(item);
+
+  const imageHtml = imageUrl
+    ? `
+      <img
+        src="${escapeAttr(imageUrl)}"
+        alt="ภาพแรก"
+        loading="lazy"
+        referrerpolicy="no-referrer"
+        onerror="this.onerror=null;this.src='${escapeAttr(buildDriveFallbackImageUrl(item.image1FileId))}';"
+      >
+    `
+    : `<div class="no-image">ไม่มีภาพ</div>`;
+
+  const mapHtml = mapUrl
+    ? `<iframe src="${escapeAttr(mapUrl)}" loading="lazy"></iframe>`
+    : `<div class="no-image">ไม่มีแผนที่</div>`;
+
+  return `
+    <article class="summary-item-card ${isAbnormal ? 'abnormal' : 'normal'}">
+      <div class="summary-item-main">
+        <div>
+          <h3>${escapeHtml(item.point)}</h3>
+          <p>${escapeHtml(item.inspector)} | กะ ${escapeHtml(item.workShift || '-')} | ${escapeHtml(item.time || '-')}</p>
+        </div>
+
+        <span class="status-pill ${isAbnormal ? 'bad' : 'good'}">
+          ${escapeHtml(item.status || '-')}
+        </span>
+      </div>
+
+      ${isAbnormal ? `
+        <div class="summary-abnormal-detail">
+          <b>รายละเอียด:</b> ${escapeHtml(item.abnormalDetail || '-')}
+          ${item.riskLevel ? `<span>ระดับ: ${escapeHtml(item.riskLevel)}</span>` : ''}
+        </div>
+      ` : ''}
+
+      <div class="summary-media-row">
+        <div class="summary-thumb">${imageHtml}</div>
+        <div class="summary-map">${mapHtml}</div>
+      </div>
+    </article>
+  `;
+}
+
+function bindSummaryTabs(data) {
+  document.querySelectorAll('.summary-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const date = btn.dataset.date;
+      Swal.close();
+
+      setTimeout(() => {
+        renderSummaryPopup(data, date);
+      }, 100);
+    });
+  });
+}
+
+/************************************************************
+ * Summary Popup - Mobile Capture Complete Version
+ * แสดงข้อมูลครบสำหรับแคปภาพ และ Copy ข้อความทั้งหมด
+ ************************************************************/
+
+function renderSummaryPopup(data, activeDate) {
+  const day = data.days.find(d => d.date === activeDate) || data.days[1] || data.days[0];
+
+  injectSummaryCaptureStyles();
+
+  const html = buildSummaryHtml(data, day);
+
+  Swal.fire({
+    title: '',
+    html,
     width: '96%',
     showConfirmButton: true,
     showDenyButton: true,
     showCancelButton: true,
     confirmButtonText: 'ปิด',
     denyButtonText: 'คัดลอกข้อความทั้งหมด',
-    cancelButtonText: 'โหมดบันทึกภาพ',
+    cancelButtonText: 'โหมดแคปภาพ',
     customClass: {
       popup: 'risk-report-popup risk-report-popup-complete',
       htmlContainer: 'risk-report-html',
       confirmButton: 'risk-report-confirm',
       denyButton: 'risk-report-copy',
-      cancelButton: 'risk-report-image-btn'
+      cancelButton: 'risk-report-capture-btn'
     },
     didOpen: () => {
       bindSummaryTabs(data);
@@ -1271,10 +1416,11 @@ function renderSummaryPopup(data, activeDate) {
     }
 
     if (result.dismiss === Swal.DismissReason.cancel) {
-      openSummaryCaptureView(day);
+      openSummaryCaptureView(data, day);
     }
   });
 }
+
 
 function buildSummaryHtml(data, day) {
   const items = Array.isArray(day.items) ? day.items : [];
@@ -1282,24 +1428,19 @@ function buildSummaryHtml(data, day) {
   const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
   const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
 
-  const tabs = Array.isArray(data.days)
-    ? data.days.map(d => {
-        const active = d.date === day.date ? 'active' : '';
+  const tabs = data.days.map(d => {
+    const active = d.date === day.date ? 'active' : '';
 
-        return `
-          <button type="button" class="summary-tab ${active}" data-date="${escapeAttr(d.date)}">
-            ${escapeHtml(d.date)}
-            <span>${Number(d.total || 0)}</span>
-          </button>
-        `;
-      }).join('')
-    : '';
+    return `
+      <button type="button" class="summary-tab ${active}" data-date="${escapeAttr(d.date)}">
+        ${escapeHtml(d.date)}
+        <span>${Number(d.total || 0)}</span>
+      </button>
+    `;
+  }).join('');
 
   const itemsHtml = items.length
-    ? items.map((item, index) => buildSummaryItemCard(item, index, {
-        mode: 'normal',
-        showMap: true
-      })).join('')
+    ? items.map((item, index) => buildSummaryItemCard(item, index)).join('')
     : `
       <div class="summary-empty">
         <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
@@ -1342,8 +1483,8 @@ function buildSummaryHtml(data, day) {
       </div>
 
       <div class="summary-capture-note">
-        <strong>หมายเหตุ:</strong>
-        <span>หน้า Summary นี้ยังแสดง Map ตามปกติ แต่โหมดบันทึกภาพจะตัด Map ออกและใช้ข้อมูลจุดตรวจแทน</span>
+        <strong>สำหรับแคปหน้าจอ:</strong>
+        <span>ข้อมูลแต่ละจุดจะแสดงชื่อจุด วันที่ เวลา ผู้ตรวจ กะ ผลตรวจ รายละเอียด ภาพ และแผนที่</span>
       </div>
 
       <div class="summary-tabs">
@@ -1358,10 +1499,8 @@ function buildSummaryHtml(data, day) {
   `;
 }
 
-function buildSummaryItemCard(item, index, options = {}) {
-  const mode = options.mode || 'normal';
-  const showMap = options.showMap !== false;
-  const isCapture = mode === 'capture';
+
+function buildSummaryItemCard(item, index) {
   const isAbnormal = item.status === 'ผิดปกติ';
 
   const point = item.point || '-';
@@ -1393,15 +1532,19 @@ function buildSummaryItemCard(item, index, options = {}) {
     fallbackFileId: item.image2FileId
   });
 
-  const mapOrPointDataHtml = showMap
-    ? buildSummaryMapBox(mapUrl, coordinates)
-    : buildSummaryPointDataBox({
-        point,
-        coordinates,
-        status,
-        workShift,
-        inspector
-      });
+  const mapHtml = mapUrl
+    ? `
+      <div class="summary-media-box">
+        <div class="summary-media-title">แผนที่</div>
+        <iframe src="${escapeAttr(mapUrl)}" loading="lazy"></iframe>
+      </div>
+    `
+    : `
+      <div class="summary-media-box summary-media-empty">
+        <div class="summary-media-title">แผนที่</div>
+        <span>ไม่มีแผนที่</span>
+      </div>
+    `;
 
   const abnormalHtml = isAbnormal
     ? `
@@ -1432,7 +1575,7 @@ function buildSummaryItemCard(item, index, options = {}) {
   `;
 
   return `
-    <article class="summary-item-card summary-item-complete ${isCapture ? 'capture-item-card' : ''} ${isAbnormal ? 'abnormal' : 'normal'}">
+    <article class="summary-item-card summary-item-complete ${isAbnormal ? 'abnormal' : 'normal'}">
 
       <div class="summary-item-main">
         <div>
@@ -1464,47 +1607,13 @@ function buildSummaryItemCard(item, index, options = {}) {
       <div class="summary-media-row summary-media-row-complete">
         ${image1Html}
         ${image2Html}
-        ${mapOrPointDataHtml}
+        ${mapHtml}
       </div>
 
     </article>
   `;
 }
 
-function buildSummaryMapBox(mapUrl, coordinates) {
-  if (!mapUrl) {
-    return `
-      <div class="summary-media-box summary-media-empty">
-        <div class="summary-media-title">แผนที่</div>
-        <span>ไม่มีแผนที่</span>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="summary-media-box summary-map-box">
-      <div class="summary-media-title">แผนที่</div>
-      <iframe
-        src="${escapeAttr(mapUrl)}"
-        loading="lazy"
-        referrerpolicy="no-referrer-when-downgrade">
-      </iframe>
-    </div>
-  `;
-}
-
-function buildSummaryPointDataBox({ point, coordinates, status, workShift, inspector }) {
-  return `
-    <div class="summary-media-box summary-point-data-box">
-      <div class="summary-media-title">ข้อมูลจุดตรวจ</div>
-      <div class="summary-point-data">
-        <strong>${escapeHtml(status || '-')}</strong>
-        <span>กะ ${escapeHtml(workShift || '-')}</span>
-        <small>${escapeHtml(coordinates || '-')}</small>
-      </div>
-    </div>
-  `;
-}
 
 function buildSummaryImageBox({ title, url, fallbackFileId }) {
   if (!url) {
@@ -1525,13 +1634,13 @@ function buildSummaryImageBox({ title, url, fallbackFileId }) {
         src="${escapeAttr(url)}"
         alt="${escapeAttr(title)}"
         loading="lazy"
-        crossorigin="anonymous"
         referrerpolicy="no-referrer"
         onerror="this.onerror=null;${fallback ? `this.src='${escapeAttr(fallback)}';` : `this.parentElement.classList.add('summary-media-empty');this.remove();`}"
       >
     </div>
   `;
 }
+
 
 function bindSummaryTabs(data) {
   document.querySelectorAll('.summary-tab').forEach(btn => {
@@ -1546,10 +1655,6 @@ function bindSummaryTabs(data) {
   });
 }
 
-/************************************************************
- * Copy Summary Text
- * ไม่มีลิงก์ภาพ / ไม่มีลิงก์แผนที่
- ************************************************************/
 
 async function copySummaryText(day) {
   const items = Array.isArray(day.items) ? day.items : [];
@@ -1598,6 +1703,14 @@ async function copySummaryText(day) {
       } else {
         text += `รายละเอียด: ปกติ ไม่พบความผิดปกติ\n`;
       }
+
+      const image1 = buildSummaryImageUrlBySlot(item, 1);
+      const image2 = buildSummaryImageUrlBySlot(item, 2);
+      const mapUrl = item.mapUrl || buildMapEmbedUrl(item.coordinates, 20);
+
+      text += `ภาพตรวจ 1: ${image1 || '-'}\n`;
+      text += `ภาพตรวจ 2: ${image2 || '-'}\n`;
+      text += `แผนที่: ${mapUrl || '-'}\n`;
     });
   }
 
@@ -1607,7 +1720,7 @@ async function copySummaryText(day) {
     await Swal.fire({
       icon: 'success',
       title: 'คัดลอกข้อความทั้งหมดแล้ว',
-      text: 'คัดลอกเฉพาะข้อมูลเรียบร้อย ไม่มีลิงก์ภาพหรือแผนที่',
+      text: 'รายละเอียดทุกจุดตรวจถูกคัดลอกเรียบร้อย',
       timer: 1300,
       showConfirmButton: false,
       customClass: getSwalClass()
@@ -1628,42 +1741,30 @@ async function copySummaryText(day) {
   }
 }
 
+
 /************************************************************
- * Capture View
- * สำคัญ: ไม่ปิด Swal ก่อนแคป เพื่อให้ DOM ยังอยู่
+ * Summary Capture View
+ * เปิดหน้า Popup แบบยาวสำหรับแคปหน้าจอ/Long Screenshot
  ************************************************************/
 
-function openSummaryCaptureView(day) {
+function openSummaryCaptureView(data, day) {
   injectSummaryCaptureStyles();
+
+  const html = buildSummaryCaptureHtml(day);
 
   Swal.fire({
     title: '',
-    html: buildSummaryCaptureHtml(day),
+    html,
     width: '96%',
     showConfirmButton: true,
     showDenyButton: true,
     confirmButtonText: 'ปิด',
     denyButtonText: 'คัดลอกข้อความทั้งหมด',
-    showCancelButton: false,
     customClass: {
       popup: 'risk-report-popup risk-report-popup-complete capture-mode-popup',
       htmlContainer: 'risk-report-html capture-mode-html',
       confirmButton: 'risk-report-confirm',
       denyButton: 'risk-report-copy'
-    },
-    didOpen: () => {
-      const captureArea = document.getElementById('riskReportCapturePage');
-      const btn = document.getElementById('downloadSummaryPngBtn');
-
-      if (captureArea) {
-        captureArea.scrollTop = 0;
-      }
-
-      if (btn) {
-        btn.addEventListener('click', async () => {
-          await captureSummaryReportAsImage(day);
-        });
-      }
     }
   }).then(async result => {
     if (result.isDenied) {
@@ -1672,16 +1773,14 @@ function openSummaryCaptureView(day) {
   });
 }
 
+
 function buildSummaryCaptureHtml(day) {
   const items = Array.isArray(day.items) ? day.items : [];
   const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
   const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
 
   const itemsHtml = items.length
-    ? items.map((item, index) => buildSummaryItemCard(item, index, {
-        mode: 'capture',
-        showMap: false
-      })).join('')
+    ? items.map((item, index) => buildSummaryItemCard(item, index)).join('')
     : `
       <div class="summary-empty">
         <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
@@ -1709,12 +1808,8 @@ function buildSummaryCaptureHtml(day) {
       </div>
 
       <div class="capture-page-note">
-        ภาพรายงานนี้ตัด Map ออกแล้ว และใช้ข้อมูลจุดตรวจ/พิกัดแทนในช่องที่ 3
+        ใช้หน้านี้สำหรับแคปหน้าจอหรือ Long Screenshot บนมือถือ เพื่อเก็บข้อมูล ภาพ แผนที่ และรายละเอียดทุกจุดในรายงานเดียว
       </div>
-
-      <button id="downloadSummaryPngBtn" type="button" class="download-summary-png-btn">
-        ดาวน์โหลดภาพรายงาน PNG
-      </button>
 
       <div class="summary-items summary-items-complete">
         ${itemsHtml}
@@ -1724,203 +1819,10 @@ function buildSummaryCaptureHtml(day) {
   `;
 }
 
-async function captureSummaryReportAsImage(day) {
-  const target = document.getElementById('riskReportCapturePage');
 
-  if (!target) {
-    showWarning('ไม่พบพื้นที่รายงานสำหรับสร้างภาพ');
-    return;
-  }
-
-  const btn = document.getElementById('downloadSummaryPngBtn');
-
-  let originalMaxHeight = '';
-  let originalOverflow = '';
-  let originalHeight = '';
-  let originalWidth = '';
-  let originalScrollTop = 0;
-  let originalBtnDisplay = '';
-
-  try {
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = 'กำลังสร้างภาพ...';
-      originalBtnDisplay = btn.style.display;
-      btn.style.display = 'none';
-    }
-
-    await ensureHtml2CanvasLoaded();
-
-    originalScrollTop = target.scrollTop;
-    originalMaxHeight = target.style.maxHeight;
-    originalOverflow = target.style.overflow;
-    originalHeight = target.style.height;
-    originalWidth = target.style.width;
-
-    target.scrollTop = 0;
-    target.style.maxHeight = 'none';
-    target.style.overflow = 'visible';
-    target.style.height = 'auto';
-    target.style.width = target.offsetWidth + 'px';
-
-    await waitForImagesInElement(target, 9000);
-    await delay(500);
-
-    const canvas = await window.html2canvas(target, {
-      backgroundColor: '#ffffff',
-      scale: Math.min(window.devicePixelRatio || 2, 2),
-      useCORS: true,
-      allowTaint: false,
-      logging: false,
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: target.scrollWidth,
-      windowHeight: target.scrollHeight,
-      width: target.scrollWidth,
-      height: target.scrollHeight
-    });
-
-    const imageData = canvas.toDataURL('image/png');
-    const fileName = buildSummaryImageFileName(day);
-
-    downloadBase64Image(imageData, fileName);
-
-    await Swal.fire({
-      icon: 'success',
-      title: 'สร้างภาพรายงานสำเร็จ',
-      text: 'ระบบดาวน์โหลดภาพ PNG เรียบร้อยแล้ว',
-      timer: 1400,
-      showConfirmButton: false,
-      customClass: getSwalClass()
-    });
-
-  } catch (err) {
-    await Swal.fire({
-      icon: 'error',
-      title: 'สร้างภาพไม่สำเร็จ',
-      html: `
-        <div style="text-align:left;line-height:1.55">
-          <p><b>รายละเอียด:</b> ${escapeHtml(err.message || String(err))}</p>
-          <p><b>สาเหตุที่เป็นไปได้:</b></p>
-          <p>1. รูปจาก Google Drive บางรูปติดสิทธิ์ CORS</p>
-          <p>2. รายงานยาวมากจนหน่วยความจำมือถือไม่พอ</p>
-          <p>3. อินเทอร์เน็ตโหลดภาพไม่ครบ</p>
-          <p><b>แนะนำ:</b> ใช้ Long Screenshot ในโหมดรายงานนี้ หรือกดคัดลอกข้อความทั้งหมด</p>
-        </div>
-      `,
-      confirmButtonText: 'ตกลง',
-      customClass: getSwalClass()
-    });
-
-  } finally {
-    target.style.maxHeight = originalMaxHeight;
-    target.style.overflow = originalOverflow;
-    target.style.height = originalHeight;
-    target.style.width = originalWidth;
-    target.scrollTop = originalScrollTop;
-
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'ดาวน์โหลดภาพรายงาน PNG';
-      btn.style.display = originalBtnDisplay;
-    }
-  }
-}
-
-function ensureHtml2CanvasLoaded() {
-  return new Promise((resolve, reject) => {
-    if (typeof window.html2canvas === 'function') {
-      resolve();
-      return;
-    }
-
-    const existing = document.getElementById('html2canvasScript');
-
-    if (existing) {
-      existing.addEventListener('load', resolve, { once: true });
-      existing.addEventListener('error', () => reject(new Error('โหลด html2canvas ไม่สำเร็จ')), { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = 'html2canvasScript';
-    script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-    script.async = true;
-
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('โหลด html2canvas ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต'));
-
-    document.head.appendChild(script);
-  });
-}
-
-function waitForImagesInElement(element, timeoutMs = 9000) {
-  return new Promise(resolve => {
-    const images = Array.from(element.querySelectorAll('img'));
-
-    if (!images.length) {
-      resolve();
-      return;
-    }
-
-    let completed = 0;
-    let done = false;
-
-    const finishOne = () => {
-      completed += 1;
-
-      if (!done && completed >= images.length) {
-        done = true;
-        resolve();
-      }
-    };
-
-    setTimeout(() => {
-      if (!done) {
-        done = true;
-        resolve();
-      }
-    }, timeoutMs);
-
-    images.forEach(img => {
-      if (img.complete) {
-        finishOne();
-      } else {
-        img.onload = () => finishOne();
-        img.onerror = () => finishOne();
-      }
-    });
-  });
-}
-
-function downloadBase64Image(base64, fileName) {
-  const link = document.createElement('a');
-
-  link.href = base64;
-  link.download = fileName || 'risk-point-summary.png';
-
-  document.body.appendChild(link);
-  link.click();
-
-  setTimeout(() => {
-    link.remove();
-  }, 300);
-}
-
-function buildSummaryImageFileName(day) {
-  const date = String(day?.date || '')
-    .replace(/\//g, '-')
-    .replace(/\s+/g, '_');
-
-  const inspector = String(STATE.activeSummaryFilters.inspector || STATE.inspector || 'inspector')
-    .replace(/[\\/:*?"<>|]/g, '')
-    .replace(/\s+/g, '_');
-
-  const shift = String(STATE.activeSummaryFilters.workShift || 'all')
-    .replace(/[\\/:*?"<>|]/g, '');
-
-  return `สรุปจุดเสี่ยง_${date || 'date'}_${inspector}_กะ${shift}.png`;
-}
+/************************************************************
+ * Summary Image Helpers
+ ************************************************************/
 
 function buildSummaryImageUrlBySlot(item, slot) {
   const fileId = String(item[`image${slot}FileId`] || '').trim();
@@ -1938,6 +1840,7 @@ function buildSummaryImageUrlBySlot(item, slot) {
   return url;
 }
 
+
 function extractTimeFromTimestamp(timestamp) {
   const text = String(timestamp || '').trim();
 
@@ -1946,6 +1849,11 @@ function extractTimeFromTimestamp(timestamp) {
   const match = text.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
   return match ? match[1] : '';
 }
+
+
+/************************************************************
+ * Summary Capture CSS
+ ************************************************************/
 
 function injectSummaryCaptureStyles() {
   if (document.getElementById('riskSummaryCaptureStyles')) return;
@@ -2124,66 +2032,6 @@ function injectSummaryCaptureStyles() {
       background: rgba(100, 116, 139, 0.7);
     }
 
-    .summary-point-data-box {
-      display: block !important;
-      background: #f8fafc !important;
-    }
-
-    .summary-point-data {
-      height: 100%;
-      padding: 24px 7px 7px;
-      display: grid;
-      align-content: center;
-      gap: 2px;
-      text-align: center;
-    }
-
-    .summary-point-data strong {
-      color: #073b66;
-      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
-      font-size: 12px;
-    }
-
-    .summary-point-data span {
-      color: #334155;
-      font-size: 10.5px;
-      font-weight: 700;
-    }
-
-    .summary-point-data small {
-      color: #64748b;
-      font-size: 8.5px;
-      line-height: 1.25;
-      word-break: break-all;
-    }
-
-    .download-summary-png-btn {
-      width: 100%;
-      min-height: 42px;
-      margin: 8px 0;
-      border: 0;
-      border-radius: 13px;
-      background: linear-gradient(135deg, #15803d, #16a34a);
-      color: #fff;
-      font-family: var(--font-heading, "Prompt", system-ui, sans-serif);
-      font-weight: 900;
-      cursor: pointer;
-    }
-
-    .download-summary-png-btn:disabled {
-      opacity: 0.65;
-      cursor: wait;
-    }
-
-    .risk-report-image-btn {
-      background: linear-gradient(135deg, #15803d, #16a34a) !important;
-      color: #fff !important;
-      border-radius: 13px !important;
-      padding: 10px 18px !important;
-      font-family: var(--font-heading, "Prompt", system-ui, sans-serif) !important;
-      font-weight: 800 !important;
-    }
-
     .capture-mode-popup {
       width: min(96vw, 820px) !important;
     }
@@ -2193,12 +2041,9 @@ function injectSummaryCaptureStyles() {
     }
 
     .capture-page {
-      width: 760px;
-      max-width: 100%;
       max-height: 80vh !important;
       overflow-y: auto !important;
       background: #ffffff !important;
-      margin: 0 auto;
     }
 
     .capture-page-header {

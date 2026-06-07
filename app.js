@@ -23,7 +23,8 @@ const STORAGE_KEYS = window.APP_CONFIG.STORAGE_KEYS || {
   INSPECTOR: 'riskpoint_inspector',
   LOGIN_TIME: 'riskpoint_login_time',
   WORK_SHIFT: 'riskpoint_work_shift',
-  WORK_DATE: 'riskpoint_work_date'
+  WORK_DATE: 'riskpoint_work_date',
+  MODULE: 'riskpoint_module'
 };
 
 const WORK_SHIFTS = Array.isArray(window.APP_CONFIG.WORK_SHIFTS)
@@ -36,6 +37,7 @@ const CROSS_DAY_SHIFTS = Array.isArray(window.APP_CONFIG.CROSS_DAY_SHIFTS)
 
 const STATE = {
   inspector: '',
+  module: 'risk',
   points: [],
   filteredPoints: [],
   selectedPoint: null,
@@ -54,6 +56,59 @@ const STATE = {
   currentGps: null,
   workShift: ''
 };
+function normalizeModuleKey(value) {
+  const key = String(value || 'risk').trim().toLowerCase();
+  return key === 'security' ? 'security' : 'risk';
+}
+
+function getCurrentModule() {
+  return normalizeModuleKey(
+    STATE.module ||
+    localStorage.getItem(STORAGE_KEYS.MODULE) ||
+    $('#moduleSelect')?.value ||
+    'risk'
+  );
+}
+
+function getModuleLabel(moduleKey) {
+  const key = normalizeModuleKey(moduleKey);
+
+  if (key === 'security') {
+    return 'Security';
+  }
+
+  return 'ตรวจจุดเสี่ยง';
+}
+
+function updateModuleUI() {
+  const moduleKey = getCurrentModule();
+  STATE.module = moduleKey;
+
+  const moduleSelect = $('#moduleSelect');
+  if (moduleSelect) {
+    moduleSelect.value = moduleKey;
+  }
+
+  const title = $('#loginTitleText');
+  const subtitle = $('#loginSubtitleText');
+
+  if (title) {
+    title.textContent = moduleKey === 'security'
+      ? 'ระบบตรวจ Security'
+      : 'ระบบบันทึกจุดเสี่ยง';
+  }
+
+  if (subtitle) {
+    subtitle.textContent = moduleKey === 'security'
+      ? 'เข้าสู่ระบบด้วยรหัส Security'
+      : 'เข้าสู่ระบบด้วยรหัส พนง.';
+  }
+
+  const systemStatusText = $('#systemStatusText');
+  if (systemStatusText && STATE.inspector) {
+    systemStatusText.textContent = `${getModuleLabel(moduleKey)} พร้อมใช้งาน`;
+  }
+}
 
 /************************************************************
  * Init
@@ -65,6 +120,10 @@ function initApp() {
   injectDynamicStyles();
   bindEvents();
   setDefaultDates();
+
+  STATE.module = normalizeModuleKey(localStorage.getItem(STORAGE_KEYS.MODULE) || 'risk');
+  updateModuleUI();
+
   restoreLogin();
 
   apiHealth().catch(() => {
@@ -74,6 +133,7 @@ function initApp() {
 
 function bindEvents() {
   $('#loginForm')?.addEventListener('submit', handleLogin);
+  $('#moduleSelect')?.addEventListener('change', handleModuleChange);
   $('#togglePassBtn')?.addEventListener('click', togglePassword);
   $('#logoutBtn')?.addEventListener('click', logout);
 
@@ -99,7 +159,19 @@ function bindEvents() {
   $('#photoInput1')?.addEventListener('change', e => handlePhotoFileChange(e, 1));
   $('#photoInput2')?.addEventListener('change', e => handlePhotoFileChange(e, 2));
 }
+function handleModuleChange() {
+  const moduleKey = normalizeModuleKey($('#moduleSelect')?.value || 'risk');
 
+  STATE.module = moduleKey;
+  localStorage.setItem(STORAGE_KEYS.MODULE, moduleKey);
+
+  updateModuleUI();
+
+  if ($('#passInput')) {
+    $('#passInput').value = '';
+    $('#passInput').focus();
+  }
+}
 function setDefaultDates() {
   const today = toInputDate(new Date());
   const savedWorkDate = localStorage.getItem(STORAGE_KEYS.WORK_DATE) || '';
@@ -117,6 +189,10 @@ function setDefaultDates() {
 
 function restoreLogin() {
   const inspector = localStorage.getItem(STORAGE_KEYS.INSPECTOR) || '';
+  const moduleKey = normalizeModuleKey(localStorage.getItem(STORAGE_KEYS.MODULE) || 'risk');
+
+  STATE.module = moduleKey;
+  updateModuleUI();
 
   if (inspector) {
     STATE.inspector = inspector;
@@ -127,7 +203,6 @@ function restoreLogin() {
     showSection('loginSection');
   }
 }
-
 /************************************************************
  * API
  ************************************************************/
@@ -192,8 +267,13 @@ async function parseApiResponse(res) {
 }
 
 async function apiHealth() {
-  const data = await apiGet('/api/health');
-  setText('systemStatusText', data.ok ? 'พร้อมใช้งาน' : 'ผิดปกติ');
+  const moduleKey = getCurrentModule();
+
+  const data = await apiGet(`/api/health?module=${encodeURIComponent(moduleKey)}`);
+
+  const moduleLabel = data.moduleLabel || getModuleLabel(moduleKey);
+  setText('systemStatusText', data.ok ? `${moduleLabel} พร้อมใช้งาน` : 'ผิดปกติ');
+
   return data;
 }
 
@@ -205,29 +285,45 @@ async function handleLogin(e) {
   e.preventDefault();
 
   const pass = $('#passInput')?.value.trim();
+  const moduleKey = normalizeModuleKey($('#moduleSelect')?.value || 'risk');
 
   if (!pass) {
     showWarning('กรุณากรอกรหัสผู้ตรวจ');
     return;
   }
 
+  STATE.module = moduleKey;
+  localStorage.setItem(STORAGE_KEYS.MODULE, moduleKey);
+
   setButtonLoading('loginBtn', true, 'กำลังตรวจสอบ...');
 
   try {
-    const data = await apiPost('/api/login', { pass }, 45000);
+    const data = await apiPost('/api/login', {
+      pass,
+      module: moduleKey
+    }, 45000);
 
     STATE.inspector = data.inspector;
+    STATE.module = normalizeModuleKey(data.module || moduleKey);
+
     localStorage.setItem(STORAGE_KEYS.INSPECTOR, data.inspector);
+    localStorage.setItem(STORAGE_KEYS.MODULE, STATE.module);
     localStorage.setItem(STORAGE_KEYS.LOGIN_TIME, new Date().toISOString());
 
+    updateModuleUI();
     updateInspectorUI();
     syncSummaryFiltersFromLogin();
 
     await Swal.fire({
       icon: 'success',
       title: 'เข้าสู่ระบบสำเร็จ',
-      text: `ผู้ตรวจ: ${data.inspector}`,
-      timer: 1000,
+      html: `
+        <div style="font-size:14px;line-height:1.7">
+          <strong>ระบบ:</strong> ${escapeHtml(data.moduleLabel || getModuleLabel(STATE.module))}<br>
+          <strong>ผู้ตรวจ:</strong> ${escapeHtml(data.inspector)}
+        </div>
+      `,
+      timer: 1200,
       showConfirmButton: false,
       customClass: getSwalClass()
     });
@@ -271,8 +367,10 @@ function logout() {
 
     localStorage.removeItem(STORAGE_KEYS.INSPECTOR);
     localStorage.removeItem(STORAGE_KEYS.LOGIN_TIME);
+    localStorage.removeItem(STORAGE_KEYS.MODULE);
 
     STATE.inspector = '';
+    STATE.module = 'risk';
     STATE.points = [];
     STATE.filteredPoints = [];
     STATE.selectedPoint = null;
@@ -280,13 +378,17 @@ function logout() {
     STATE.images[2] = null;
 
     if ($('#passInput')) $('#passInput').value = '';
+    if ($('#moduleSelect')) $('#moduleSelect').value = 'risk';
 
+    updateModuleUI();
     showSection('loginSection');
   });
 }
 
 function updateInspectorUI() {
-  setText('welcomeText', `ผู้ตรวจ: ${STATE.inspector}`);
+  const moduleLabel = getModuleLabel(getCurrentModule());
+
+  setText('welcomeText', `${moduleLabel} | ผู้ตรวจ: ${STATE.inspector}`);
   setText('inspectionInspectorText', `ผู้ตรวจ: ${STATE.inspector}`);
 
   const summaryInspectorInput = $('#summaryInspectorInput');
@@ -314,7 +416,12 @@ async function loadRiskPoints() {
   setButtonLoading('refreshPointsBtn', true, 'กำลังโหลด...');
 
   try {
-    const data = await apiGet('/api/points', 60000);
+    const moduleKey = getCurrentModule();
+    const data = await apiGet(`/api/points?module=${encodeURIComponent(moduleKey)}`, 60000);
+
+    STATE.module = normalizeModuleKey(data.module || moduleKey);
+    localStorage.setItem(STORAGE_KEYS.MODULE, STATE.module);
+    updateModuleUI();
 
     STATE.points = Array.isArray(data.points) ? data.points : [];
     STATE.filteredPoints = [...STATE.points];
@@ -325,7 +432,7 @@ async function loadRiskPoints() {
   } catch (err) {
     showError(err.message);
   } finally {
-    setButtonLoading('refreshPointsBtn', false, 'โหลดจุดเสี่ยงใหม่');
+    setButtonLoading('refreshPointsBtn', false, 'โหลดจุดตรวจใหม่');
   }
 }
 
@@ -988,7 +1095,7 @@ async function handleSaveInspection(e) {
       title: 'บันทึกสำเร็จ',
       html: `
         <div class="save-success-box">
-          <p><b>จุดเสี่ยง:</b> ${escapeHtml(data.point)}</p>
+          <p><b>จุดตรวจ:</b> ${escapeHtml(data.point)}</p>
           <p><b>ผู้ตรวจ:</b> ${escapeHtml(data.inspector)}</p>
           <p><b>เวลา:</b> ${escapeHtml(data.timestamp)}</p>
           <p><b>วันที่รอบงาน:</b> ${escapeHtml(data.workDate || payload.workDate)}</p>
@@ -1016,6 +1123,7 @@ function buildInspectionPayload() {
   const status = $('#statusSelect')?.value.trim() || '';
 
   return {
+    module: getCurrentModule(),
     inspector: STATE.inspector,
     point: STATE.selectedPoint?.point || '',
     coordinates: STATE.selectedPoint?.coordinates || '',
@@ -1035,7 +1143,7 @@ function validateInspectionPayload(payload, options = {}) {
   const requireGps = options.requireGps !== false;
 
   if (!payload.inspector) return { ok: false, message: 'ไม่พบชื่อผู้ตรวจ กรุณาเข้าสู่ระบบใหม่' };
-  if (!payload.point) return { ok: false, message: 'ไม่พบจุดเสี่ยงที่เลือก' };
+  if (!payload.point) return { ok: false, message: 'ไม่พบจุดตรวจที่เลือก' };
   if (!payload.workDate) return { ok: false, message: 'กรุณาเลือกวันที่รอบงาน' };
   if (!payload.workShift) return { ok: false, message: 'กรุณาเลือกกะทำงาน' };
   if (!WORK_SHIFTS.includes(payload.workShift)) return { ok: false, message: 'กะทำงานไม่ถูกต้อง' };
@@ -1197,13 +1305,20 @@ async function loadSummary(inputDate) {
       workShift
     };
 
+    const moduleKey = getCurrentModule();
+
     const query = new URLSearchParams({
+      module: moduleKey,
       date: dateText,
       inspector,
       workShift
     });
 
     const data = await apiGet(`/api/summary?${query.toString()}`, 60000);
+
+    STATE.module = normalizeModuleKey(data.module || moduleKey);
+    localStorage.setItem(STORAGE_KEYS.MODULE, STATE.module);
+    updateModuleUI();
 
     STATE.summaryData = data;
     STATE.activeSummaryDate = data.selectedDate;
@@ -1215,166 +1330,6 @@ async function loadSummary(inputDate) {
     Swal.close();
     showError(err.message);
   }
-}
-
-function renderSummaryPopup(data, activeDate) {
-  const day = data.days.find(d => d.date === activeDate) || data.days[1] || data.days[0];
-
-  const html = buildSummaryHtml(data, day);
-
-  Swal.fire({
-    title: '',
-    html,
-    width: '96%',
-    showConfirmButton: true,
-    showDenyButton: true,
-    confirmButtonText: 'ปิด',
-    denyButtonText: 'คัดลอกสรุปข้อความ',
-    customClass: {
-      popup: 'risk-report-popup',
-      htmlContainer: 'risk-report-html',
-      confirmButton: 'risk-report-confirm',
-      denyButton: 'risk-report-copy'
-    },
-    didOpen: () => {
-      bindSummaryTabs(data);
-    }
-  }).then(async result => {
-    if (result.isDenied) {
-      await copySummaryText(day);
-    }
-  });
-}
-
-function buildSummaryHtml(data, day) {
-  const inspectorsText = day.inspectors && day.inspectors.length ? day.inspectors.join(', ') : '-';
-  const filterInspector = STATE.activeSummaryFilters.inspector || STATE.inspector || '-';
-  const filterShift = STATE.activeSummaryFilters.workShift || 'ทุกกะ';
-
-  const tabs = data.days.map(d => {
-    const active = d.date === day.date ? 'active' : '';
-    return `
-      <button type="button" class="summary-tab ${active}" data-date="${escapeAttr(d.date)}">
-        ${escapeHtml(d.date)}
-        <span>${d.total}</span>
-      </button>
-    `;
-  }).join('');
-
-  const itemsHtml = day.items && day.items.length
-    ? day.items.map(buildSummaryItemCard).join('')
-    : `
-      <div class="summary-empty">
-        <strong>ไม่พบข้อมูลการตรวจในวันนี้</strong>
-        <p>หากเพิ่งบันทึก กรุณาตรวจสอบวันที่รอบงาน ผู้ตรวจ หรือกะทำงาน</p>
-      </div>
-    `;
-
-  return `
-    <div class="risk-report-capture">
-      <div class="risk-report-header">
-        <img src="${LOGO_URL}" alt="logo">
-        <div>
-          <h2>สรุปผลตรวจจุดเสี่ยง</h2>
-          <p>วันที่ ${escapeHtml(day.date)}</p>
-        </div>
-      </div>
-
-      <div class="risk-report-stats">
-        <div>
-          <span>ตรวจทั้งหมด</span>
-          <strong>${day.total}</strong>
-        </div>
-
-        <div>
-          <span>ปกติ</span>
-          <strong>${day.normal}</strong>
-        </div>
-
-        <div class="${day.abnormal > 0 ? 'danger' : ''}">
-          <span>ผิดปกติ</span>
-          <strong>${day.abnormal}</strong>
-        </div>
-      </div>
-
-      <div class="risk-report-inspectors">
-        <span>ตัวกรองรายงาน</span>
-        <strong>ผู้ตรวจ: ${escapeHtml(filterInspector)} | กะ: ${escapeHtml(filterShift)}</strong>
-        <small>พบผู้ตรวจในข้อมูล: ${escapeHtml(inspectorsText)}</small>
-      </div>
-
-      <div class="summary-tabs">
-        ${tabs}
-      </div>
-
-      <div class="summary-items">
-        ${itemsHtml}
-      </div>
-    </div>
-  `;
-}
-
-function buildSummaryItemCard(item) {
-  const isAbnormal = item.status === 'ผิดปกติ';
-  const mapUrl = buildMapEmbedUrl(item.coordinates, 20);
-
-  const imageUrl = buildSummaryImageUrl(item);
-
-  const imageHtml = imageUrl
-    ? `
-      <img
-        src="${escapeAttr(imageUrl)}"
-        alt="ภาพแรก"
-        loading="lazy"
-        referrerpolicy="no-referrer"
-        onerror="this.onerror=null;this.src='${escapeAttr(buildDriveFallbackImageUrl(item.image1FileId))}';"
-      >
-    `
-    : `<div class="no-image">ไม่มีภาพ</div>`;
-
-  const mapHtml = mapUrl
-    ? `<iframe src="${escapeAttr(mapUrl)}" loading="lazy"></iframe>`
-    : `<div class="no-image">ไม่มีแผนที่</div>`;
-
-  return `
-    <article class="summary-item-card ${isAbnormal ? 'abnormal' : 'normal'}">
-      <div class="summary-item-main">
-        <div>
-          <h3>${escapeHtml(item.point)}</h3>
-          <p>${escapeHtml(item.inspector)} | กะ ${escapeHtml(item.workShift || '-')} | ${escapeHtml(item.time || '-')}</p>
-        </div>
-
-        <span class="status-pill ${isAbnormal ? 'bad' : 'good'}">
-          ${escapeHtml(item.status || '-')}
-        </span>
-      </div>
-
-      ${isAbnormal ? `
-        <div class="summary-abnormal-detail">
-          <b>รายละเอียด:</b> ${escapeHtml(item.abnormalDetail || '-')}
-          ${item.riskLevel ? `<span>ระดับ: ${escapeHtml(item.riskLevel)}</span>` : ''}
-        </div>
-      ` : ''}
-
-      <div class="summary-media-row">
-        <div class="summary-thumb">${imageHtml}</div>
-        <div class="summary-map">${mapHtml}</div>
-      </div>
-    </article>
-  `;
-}
-
-function bindSummaryTabs(data) {
-  document.querySelectorAll('.summary-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const date = btn.dataset.date;
-      Swal.close();
-
-      setTimeout(() => {
-        renderSummaryPopup(data, date);
-      }, 100);
-    });
-  });
 }
 
 /************************************************************
@@ -1454,7 +1409,7 @@ function buildSummaryHtml(data, day) {
       <div class="risk-report-header">
         <img src="${LOGO_URL}" alt="logo">
         <div>
-          <h2>สรุปผลตรวจจุดเสี่ยง</h2>
+          <h2>สรุปผลตรวจจุดตรวจ</h2>
           <p>วันที่รอบงาน ${escapeHtml(day.date || '-')}</p>
         </div>
       </div>
@@ -1689,7 +1644,7 @@ async function copySummaryText(day) {
       text += `พิกัด: ${item.coordinates || '-'}\n`;
 
       if (item.distanceMeters) {
-        text += `ระยะห่างจากจุดเสี่ยง: ${item.distanceMeters} เมตร\n`;
+        text += `ระยะห่างจากจุดตรวจ: ${item.distanceMeters} เมตร\n`;
       }
 
       if (item.gpsAccuracy) {
@@ -1704,13 +1659,7 @@ async function copySummaryText(day) {
         text += `รายละเอียด: ปกติ ไม่พบความผิดปกติ\n`;
       }
 
-      const image1 = buildSummaryImageUrlBySlot(item, 1);
-      const image2 = buildSummaryImageUrlBySlot(item, 2);
-      const mapUrl = item.mapUrl || buildMapEmbedUrl(item.coordinates, 20);
-
-      text += `ภาพตรวจ 1: ${image1 || '-'}\n`;
-      text += `ภาพตรวจ 2: ${image2 || '-'}\n`;
-      text += `แผนที่: ${mapUrl || '-'}\n`;
+      // ไม่ใส่ลิงก์รูปภาพหรือแผนที่ในข้อความคัดลอก เพื่อให้เหลือเฉพาะข้อมูลตรวจตามที่ต้องการ
     });
   }
 
@@ -1793,7 +1742,7 @@ function buildSummaryCaptureHtml(day) {
       <div class="capture-page-header">
         <img src="${LOGO_URL}" alt="logo">
         <div>
-          <h2>สรุปผลตรวจจุดเสี่ยง</h2>
+          <h2>สรุปผลตรวจจุดตรวจ</h2>
           <p>วันที่รอบงาน ${escapeHtml(day.date || '-')}</p>
           <p>ผู้ตรวจ: ${escapeHtml(filterInspector)} | กะ: ${escapeHtml(filterShift)}</p>
         </div>

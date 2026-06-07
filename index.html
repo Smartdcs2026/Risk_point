@@ -183,12 +183,21 @@
 
         <div class="login-header">
           <div class="system-badge">Workplace Safety</div>
-          <h1>ระบบบันทึกจุดเสี่ยง</h1>
-          <p>เข้าสู่ระบบด้วยรหัส พนง.</p>
+         <h1 id="loginTitleText">ระบบบันทึกจุดเสี่ยง</h1>
+<p id="loginSubtitleText">เข้าสู่ระบบด้วยรหัส พนง.</p>
         </div>
 
-        <form id="loginForm" class="login-form" autocomplete="off">
-          <label class="form-label" for="passInput">รหัส</label>
+       <form id="loginForm" class="login-form" autocomplete="off">
+
+  <label class="form-label" for="moduleSelect">ประเภทการตรวจ</label>
+  <select id="moduleSelect" required>
+    <option value="risk">ตรวจจุดเสี่ยง</option>
+    <option value="security">Security</option>
+  </select>
+
+  <div style="height:10px;"></div>
+
+  <label class="form-label" for="passInput">รหัส</label>
 
           <div class="password-box">
             <input
